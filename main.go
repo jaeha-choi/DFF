@@ -22,7 +22,39 @@ const InstallDir string = "D:/Games/Riot Games/League of Legends/"
 var cli *http.Client
 var values []string
 var interval = 3
-var debug = true
+var debug = false
+
+type Item struct {
+	Count int    `json:"count"`
+	ID    string `json:"id"`
+}
+
+type ItemBlock struct {
+	HideIfSummonerSpell string `json:"hideIfSummonerSpell"`
+	Items               []Item `json:"items"`
+	ShowIfSummonerSpell string `json:"showIfSummonerSpell"`
+	Type                string `json:"type"`
+}
+
+type ItemSet struct {
+	AssociatedChampions []int         `json:"associatedChampions"`
+	AssociatedMaps      []int         `json:"associatedMaps"`
+	Blocks              []ItemBlock   `json:"blocks"`
+	Map                 string        `json:"map"`
+	Mode                string        `json:"mode"`
+	PreferredItemSlots  []interface{} `json:"preferredItemSlots"`
+	Sortrank            int           `json:"sortrank"`
+	StartedFrom         string        `json:"startedFrom"`
+	Title               string        `json:"title"`
+	Type                string        `json:"type"`
+	UID                 string        `json:"uid"`
+}
+
+type ItemPage struct {
+	AccountID int64     `json:"accountId"`
+	ItemSets  []ItemSet `json:"itemSets"`
+	Timestamp int64     `json:"timestamp"`
+}
 
 type RunePage struct {
 	AutoModifiedSelections []interface{} `json:"autoModifiedSelections"`
@@ -370,7 +402,7 @@ func isInChampSelect() bool {
 	//return resp.StatusCode == 200
 }
 
-func getAccInfo() int {
+func getAccInfo() (int64, int) {
 	command := "/lol-summoner/v1/current-summoner" // returns login information
 
 	var data AccountInfo
@@ -387,7 +419,7 @@ func getAccInfo() int {
 	fmt.Println("Player UUID: ", data.Puuid)
 	fmt.Println("Summoner ID: ", data.SummonerID)
 
-	return data.SummonerID
+	return data.AccountID, data.SummonerID
 }
 
 func getQueueId() (int, bool) {
@@ -421,6 +453,179 @@ func deleteRunePage(runePageId int) bool {
 		return true
 	}
 	return false
+}
+
+func setItems(doc *soup.Root, accId int64, sumId int, champId int, gameType *string) {
+	builds := (*doc).FindAll("tr", "class", "champion-overview__row")
+	blockCnt := len((*doc).FindAll("tr", "class", "champion-overview__row--first"))
+	blockCnt++
+
+	blockList := make([]ItemBlock, blockCnt)
+	otherItemSet := make(map[string]bool)
+	alreadyAdded := 0
+
+	i := 0
+	for _, build := range builds {
+		if strings.HasSuffix(build.Attrs()["class"], "champion-overview__row--first") {
+			items := build.FindAll("li", "class", "champion-stats__list__item")
+			itemList := make([]Item, len(items))
+			for j, img := range items {
+				str := img.Find("img").Attrs()["src"]
+				str = str[strings.LastIndex(str, "/")+1 : strings.Index(str, ".png")]
+				newItem := Item{
+					Count: 1,
+					ID:    str,
+				}
+				otherItemSet[str] = false
+				alreadyAdded++
+				itemList[j] = newItem
+			}
+			newItemBlock := ItemBlock{
+				HideIfSummonerSpell: "",
+				Items:               itemList,
+				ShowIfSummonerSpell: "",
+				Type:                build.Find("th", "class", "champion-overview__sub-header").Text(),
+			}
+			blockList[i] = newItemBlock
+			i++
+		} else {
+			items := build.FindAll("li", "class", "champion-stats__list__item")
+			for _, img := range items {
+				str := img.Find("img").Attrs()["src"]
+				str = str[strings.LastIndex(str, "/")+1 : strings.Index(str, ".png")]
+				if _, hasElem := otherItemSet[str]; !hasElem {
+					otherItemSet[str] = true
+				}
+			}
+		}
+	}
+
+	ward := Item{
+		Count: 1,
+		ID:    "3340",
+	}
+
+	blockList[0].Items = append(blockList[0].Items, ward)
+
+	consumable := ItemBlock{
+		HideIfSummonerSpell: "",
+		Items: []Item{
+			{
+				Count: 1,
+				ID:    "2055",
+			},
+			{
+				Count: 1,
+				ID:    "3340",
+			},
+			{
+				Count: 1,
+				ID:    "3363",
+			},
+			{
+				Count: 1,
+				ID:    "3364",
+			},
+			{
+				Count: 1,
+				ID:    "2047",
+			},
+			{
+				Count: 1,
+				ID:    "2138",
+			},
+			{
+				Count: 1,
+				ID:    "2139",
+			},
+			{
+				Count: 1,
+				ID:    "2140",
+			},
+		},
+		ShowIfSummonerSpell: "",
+		Type:                "Consumables",
+	}
+
+	i++
+	blockList = append(blockList[:2], blockList[1:]...)
+	blockList[1] = consumable
+
+	//fmt.Println(len(otherItemSet))
+	//fmt.Println(alreadyAdded)
+
+	itemList := make([]Item, len(otherItemSet)-alreadyAdded)
+	idx := 0
+
+	for otherItem := range otherItemSet {
+		if otherItemSet[otherItem] {
+			newItem := Item{
+				Count: 1,
+				ID:    otherItem,
+			}
+			itemList[idx] = newItem
+			idx++
+		}
+	}
+
+	newItemBlock := ItemBlock{
+		HideIfSummonerSpell: "",
+		Items:               itemList,
+		ShowIfSummonerSpell: "",
+		Type:                "Other items to consider",
+	}
+
+	blockList[i] = newItemBlock
+	i++
+
+	itemPage := ItemPage{
+		AccountID: accId,
+		ItemSets: []ItemSet{
+			{
+				AssociatedChampions: []int{champId},
+				AssociatedMaps:      []int{11, 12},
+				Blocks:              blockList,
+				Map:                 "any",
+				Mode:                "any",
+				PreferredItemSlots:  make([]interface{}, 0),
+				Sortrank:            0,
+				StartedFrom:         "blank",
+				Title:               "AutoRunes Item Page " + (*gameType),
+				Type:                "custom",
+				UID:                 "",
+			},
+		},
+		Timestamp: 0,
+	}
+
+	command := "/lol-item-sets/v1/item-sets/" + strconv.Itoa(sumId) + "/sets"
+
+	//j, _ := json.Marshal(newRune)
+	b := new(bytes.Buffer)
+	err := json.NewEncoder(b).Encode(itemPage)
+
+	if err != nil {
+		panic(err)
+	}
+
+	req, err := http.NewRequest("PUT", values[4]+"://127.0.0.1:"+values[2]+command, b)
+
+	if err != nil {
+		panic(err)
+	}
+
+	req.SetBasicAuth("riot", values[3])
+
+	resp, errs := cli.Do(req)
+	if errs != nil {
+		panic(errs)
+	}
+
+	if resp.StatusCode == 201 {
+		fmt.Println("Item page updated successfully")
+	} else {
+		fmt.Println("Item page update failed")
+	}
 }
 
 func setRunes(doc *soup.Root, gameType *string) {
@@ -532,7 +737,7 @@ func setRunes(doc *soup.Root, gameType *string) {
 	}
 }
 
-func getRunes(sumId int, champId int, queueId int) {
+func getRunes(accId int64, sumId int, champId int, queueId int) {
 	command := "/lol-champions/v1/inventories/" + strconv.Itoa(sumId) + "/champions/" + strconv.Itoa(champId)
 	var data Champion
 	var gameType, url string
@@ -543,7 +748,6 @@ func getRunes(sumId int, champId int, queueId int) {
 		panic(err)
 	}
 	// TODO: use flexible region here
-	// TODO: Add URF link here
 
 	if queueId == 900 {
 		gameType = "URF"
@@ -563,6 +767,7 @@ func getRunes(sumId int, champId int, queueId int) {
 	doc := soup.HTMLParse(resp)
 
 	setRunes(&doc, &gameType)
+	setItems(&doc, accId, sumId, champId, &gameType)
 
 	// Find champion positions
 	positions := doc.FindAll("li", "class", "champion-stats-header__position")
@@ -598,6 +803,7 @@ func getRunes(sumId int, champId int, queueId int) {
 				}
 				doc := soup.HTMLParse(resp)
 				setRunes(&doc, &gameType)
+				setItems(&doc, accId, sumId, champId, &gameType)
 				fmt.Println("Current role:", i)
 			}
 		}
@@ -662,7 +868,7 @@ func main() {
 	//command := "/riotclient/region-locale" // returns region, language etc
 	//command := "/lol-perks/v1/currentpage" // get current rune page
 
-	sumId := getAccInfo()
+	accId, sumId := getAccInfo()
 
 	//var isCustomGame = false
 	var prevChampId, champId int
@@ -688,7 +894,7 @@ func main() {
 		champId := getChampId(sumId)
 
 		if champId != 0 && prevChampId != champId {
-			getRunes(sumId, champId, queueId)
+			getRunes(accId, sumId, champId, queueId)
 			prevChampId = champId
 		}
 		time.Sleep(time.Duration(interval) * time.Second)
