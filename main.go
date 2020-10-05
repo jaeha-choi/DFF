@@ -765,14 +765,6 @@ func getRunes(accId int64, sumId int, champId int, queueId int) [][4]string {
 	}
 	// TODO: use flexible region here
 
-	if queueId == 900 {
-		gameType = "URF"
-		fmt.Println("ULTRA RAPID FIRE MODE IS ON!!!")
-		url = "https://na.op.gg/urf/" + data.Alias + "/statistics"
-	} else {
-		url = "https://na.op.gg/champion/" + data.Alias
-	}
-
 	fmt.Println("Selected Champion: ", data.Alias)
 
 	resp, err := soup.Get(url)
@@ -782,46 +774,41 @@ func getRunes(accId int64, sumId int, champId int, queueId int) [][4]string {
 
 	doc := soup.HTMLParse(resp)
 
-	setRunes(&doc, &gameType)
-	setItems(&doc, accId, sumId, champId, &gameType)
+	if queueId == 900 {
+		gameType = "URF"
+		fmt.Println("ULTRA RAPID FIRE MODE IS ON!!!")
+		url = "https://na.op.gg/urf/" + data.Alias + "/statistics"
+		setRunes(&doc, &gameType)
+		setItems(&doc, accId, sumId, champId, &gameType)
 
-	// Find champion positions
-	positions := doc.FindAll("li", "class", "champion-stats-header__position")
+	} else {
+		setRunes(&doc, &gameType)
+		setItems(&doc, accId, sumId, champId, &gameType)
 
-	//if len(positions) == 1 {
-	//	fmt.Println("No alternative positions available.")
-	//} else if len(positions) > 1 {
-	posUrlList = make([][4]string, len(positions))
+		url = "https://na.op.gg/champion/" + data.Alias
+		// Find champion positions
+		positions := doc.FindAll("li", "class", "champion-stats-header__position")
 
-	for i, pos := range positions {
-		link := "https://na.op.gg" + pos.Find("a").Attrs()["href"]
-		role := pos.Find("span", "class", "champion-stats-header__position__role").Text()
-		rate := pos.Find("span", "class", "champion-stats-header__position__rate").Text()
+		//if len(positions) == 1 {
+		//	fmt.Println("No alternative positions available.")
+		//} else if len(positions) > 1 {
+		posUrlList = make([][4]string, len(positions))
 
-		fmt.Println(i, ". "+role+": ", rate)
-		posUrlList[i][0] = role
-		posUrlList[i][1] = rate
-		posUrlList[i][2] = link
-		posUrlList[i][3] = gameType
+		for i, pos := range positions {
+			link := "https://na.op.gg" + pos.Find("a").Attrs()["href"]
+			role := pos.Find("span", "class", "champion-stats-header__position__role").Text()
+			rate := pos.Find("span", "class", "champion-stats-header__position__rate").Text()
+
+			fmt.Println(i, ". "+role+": ", rate)
+			posUrlList[i][0] = role
+			posUrlList[i][1] = rate
+			posUrlList[i][2] = link
+			posUrlList[i][3] = gameType
+
+		}
+		lastRole = posUrlList[0][0]
 
 	}
-	lastRole = posUrlList[0][0]
-	//fmt.Println("Current role: 0")
-
-	//var i int
-	//for i != -1 {
-	//	fmt.Print("Change role to... (-1 to exit): ")
-	//	_, err = fmt.Scan(&i)
-	//
-	//	if err != nil {
-	//		panic(err)
-	//	}
-	//
-	//	if i != -1 {
-	//
-	//	}
-	//}
-	//}
 	return posUrlList
 }
 
@@ -957,33 +944,35 @@ func run(status *widget.Label, p *widget.Select) {
 
 		if champId != 0 && prevChampId != champId {
 			result := getRunes(accId, sumId, champId, queueId)
-			options := make([]string, len(result))
+			if len(result) > 0 {
+				options := make([]string, len(result))
 
-			for x, elem := range result {
-				options[x] = elem[0] + "-Pick rate: " + elem[1]
-			}
+				for x, elem := range result {
+					options[x] = elem[0] + "-Pick rate: " + elem[1]
+				}
 
-			p.Options = options
-			p.Selected = options[0]
-			p.OnChanged = func(s string) {
-				sel := strings.Split(s, "-")[0]
-				if lastRole != sel {
-					for _, res := range result {
-						if res[0] == sel {
-							resp, err := soup.Get(res[2])
-							if err != nil {
-								panic(err)
+				p.Options = options
+				p.Selected = options[0]
+				p.OnChanged = func(s string) {
+					sel := strings.Split(s, "-")[0]
+					if lastRole != sel {
+						for _, res := range result {
+							if res[0] == sel {
+								resp, err := soup.Get(res[2])
+								if err != nil {
+									panic(err)
+								}
+								doc := soup.HTMLParse(resp)
+								setRunes(&doc, &(res[3]))
+								setItems(&doc, accId, sumId, champId, &(res[3]))
+								lastRole = res[0]
 							}
-							doc := soup.HTMLParse(resp)
-							setRunes(&doc, &(res[3]))
-							setItems(&doc, accId, sumId, champId, &(res[3]))
-							lastRole = res[0]
 						}
 					}
 				}
+				p.Refresh()
+				prevChampId = champId
 			}
-			p.Refresh()
-			prevChampId = champId
 		}
 		fmt.Println("Checking if Champion ID was updated...")
 		time.Sleep(time.Duration(config.Interval) * time.Second)
