@@ -767,25 +767,32 @@ func getRunes(accId int64, sumId int, champId int, queueId int) [][4]string {
 
 	fmt.Println("Selected Champion: ", data.Alias)
 
-	resp, err := soup.Get(url)
-	if err != nil {
-		panic(err)
-	}
-
-	doc := soup.HTMLParse(resp)
-
 	if queueId == 900 {
 		gameType = "URF"
 		fmt.Println("ULTRA RAPID FIRE MODE IS ON!!!")
 		url = "https://na.op.gg/urf/" + data.Alias + "/statistics"
+		resp, err := soup.Get(url)
+		if err != nil {
+			panic(err)
+		}
+
+		doc := soup.HTMLParse(resp)
+
 		setRunes(&doc, &gameType)
 		setItems(&doc, accId, sumId, champId, &gameType)
 
 	} else {
+		url = "https://na.op.gg/champion/" + data.Alias
+		resp, err := soup.Get(url)
+		if err != nil {
+			panic(err)
+		}
+
+		doc := soup.HTMLParse(resp)
+
 		setRunes(&doc, &gameType)
 		setItems(&doc, accId, sumId, champId, &gameType)
 
-		url = "https://na.op.gg/champion/" + data.Alias
 		// Find champion positions
 		positions := doc.FindAll("li", "class", "champion-stats-header__position")
 
