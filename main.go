@@ -25,6 +25,7 @@ var cli *http.Client
 var config Config
 
 var values []string
+var lastRole = ""
 
 //var interval = 3
 //var debug = false
@@ -475,8 +476,7 @@ func setItems(doc *soup.Root, accId int64, sumId int, champId int, gameType *str
 
 	blockList := make([]ItemBlock, blockCnt)
 	otherItemSet := make(map[string]bool)
-	alreadyAdded := 0
-
+	willBeAdded := 0
 	i := 0
 	for _, build := range builds {
 		if strings.HasSuffix(build.Attrs()["class"], "champion-overview__row--first") {
@@ -490,7 +490,6 @@ func setItems(doc *soup.Root, accId int64, sumId int, champId int, gameType *str
 					ID:    str,
 				}
 				otherItemSet[str] = false
-				alreadyAdded++
 				itemList[j] = newItem
 			}
 			newItemBlock := ItemBlock{
@@ -508,6 +507,7 @@ func setItems(doc *soup.Root, accId int64, sumId int, champId int, gameType *str
 				str = str[strings.LastIndex(str, "/")+1 : strings.Index(str, ".png")]
 				if _, hasElem := otherItemSet[str]; !hasElem {
 					otherItemSet[str] = true
+					willBeAdded++
 				}
 			}
 		}
@@ -564,10 +564,12 @@ func setItems(doc *soup.Root, accId int64, sumId int, champId int, gameType *str
 	blockList = append(blockList[:2], blockList[1:]...)
 	blockList[1] = consumable
 
-	//fmt.Println(len(otherItemSet))
-	//fmt.Println(alreadyAdded)
+	if config.Debug {
+		fmt.Println(len(otherItemSet))
+		fmt.Println(willBeAdded)
+	}
 
-	itemList := make([]Item, len(otherItemSet)-alreadyAdded)
+	itemList := make([]Item, willBeAdded)
 	idx := 0
 
 	for otherItem := range otherItemSet {
@@ -750,10 +752,11 @@ func setRunes(doc *soup.Root, gameType *string) {
 	}
 }
 
-func getRunes(accId int64, sumId int, champId int, queueId int) {
+func getRunes(accId int64, sumId int, champId int, queueId int) [][4]string {
 	command := "/lol-champions/v1/inventories/" + strconv.Itoa(sumId) + "/champions/" + strconv.Itoa(champId)
 	var data Champion
 	var gameType, url string
+	var posUrlList [][4]string = nil
 
 	err := json.NewDecoder(requestApi(&command)).Decode(&data)
 
@@ -785,42 +788,41 @@ func getRunes(accId int64, sumId int, champId int, queueId int) {
 	// Find champion positions
 	positions := doc.FindAll("li", "class", "champion-stats-header__position")
 
-	if len(positions) == 1 {
-		fmt.Println("No alternative positions available.")
-	} else if len(positions) > 1 {
-		posUrlList := make([]string, len(positions))
+	//if len(positions) == 1 {
+	//	fmt.Println("No alternative positions available.")
+	//} else if len(positions) > 1 {
+	posUrlList = make([][4]string, len(positions))
 
-		for i, pos := range positions {
-			link := "https://na.op.gg" + pos.Find("a").Attrs()["href"]
-			role := pos.Find("span", "class", "champion-stats-header__position__role").Text()
-			rate := pos.Find("span", "class", "champion-stats-header__position__rate").Text()
-			fmt.Println(i, ". "+role+": ", rate)
-			posUrlList[i] = link
-		}
+	for i, pos := range positions {
+		link := "https://na.op.gg" + pos.Find("a").Attrs()["href"]
+		role := pos.Find("span", "class", "champion-stats-header__position__role").Text()
+		rate := pos.Find("span", "class", "champion-stats-header__position__rate").Text()
 
-		fmt.Println("Current role: 0")
+		fmt.Println(i, ". "+role+": ", rate)
+		posUrlList[i][0] = role
+		posUrlList[i][1] = rate
+		posUrlList[i][2] = link
+		posUrlList[i][3] = gameType
 
-		var i int
-		for i != -1 {
-			fmt.Print("Change role to... (-1 to exit): ")
-			_, err = fmt.Scan(&i)
-
-			if err != nil {
-				panic(err)
-			}
-
-			if i != -1 {
-				resp, err := soup.Get(posUrlList[i])
-				if err != nil {
-					panic(err)
-				}
-				doc := soup.HTMLParse(resp)
-				setRunes(&doc, &gameType)
-				setItems(&doc, accId, sumId, champId, &gameType)
-				fmt.Println("Current role:", i)
-			}
-		}
 	}
+	lastRole = posUrlList[0][0]
+	//fmt.Println("Current role: 0")
+
+	//var i int
+	//for i != -1 {
+	//	fmt.Print("Change role to... (-1 to exit): ")
+	//	_, err = fmt.Scan(&i)
+	//
+	//	if err != nil {
+	//		panic(err)
+	//	}
+	//
+	//	if i != -1 {
+	//
+	//	}
+	//}
+	//}
+	return posUrlList
 }
 
 func getChampId(sumId int) int {
@@ -911,7 +913,7 @@ func ReadConfig() {
 	}
 }
 
-func run(status *widget.Label) {
+func run(status *widget.Label, p *widget.Select) {
 	status.SetText("Running")
 	// Read lockfile
 	content := readLock()
@@ -951,19 +953,51 @@ func run(status *widget.Label) {
 
 	// Loop until champion select phase is over
 	for isInChampSelect() {
-		fmt.Println("Checking if Champion ID was updated...")
 		champId := getChampId(sumId)
 
 		if champId != 0 && prevChampId != champId {
-			getRunes(accId, sumId, champId, queueId)
+			result := getRunes(accId, sumId, champId, queueId)
+			options := make([]string, len(result))
+
+			for x, elem := range result {
+				options[x] = elem[0] + "-Pick rate: " + elem[1]
+			}
+
+			p.Options = options
+			p.Selected = options[0]
+			p.OnChanged = func(s string) {
+				sel := strings.Split(s, "-")[0]
+				if lastRole != sel {
+					for _, res := range result {
+						if res[0] == sel {
+							resp, err := soup.Get(res[2])
+							if err != nil {
+								panic(err)
+							}
+							doc := soup.HTMLParse(resp)
+							setRunes(&doc, &(res[3]))
+							setItems(&doc, accId, sumId, champId, &(res[3]))
+							lastRole = res[0]
+						}
+					}
+				}
+			}
+			p.Refresh()
 			prevChampId = champId
 		}
+		fmt.Println("Checking if Champion ID was updated...")
 		time.Sleep(time.Duration(config.Interval) * time.Second)
 	}
+	p.Options = nil
+	p.Refresh()
+
 	status.SetText("Not running")
+
 }
 
 func main() {
+	// TODO: add reload config, debug flag
+
 	// Initialize http client
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -997,21 +1031,31 @@ func main() {
 	})
 	enableItemsCheck.SetChecked(config.EnableItem)
 
+	roleSelect := widget.NewSelect(nil, nil)
+	roleSelect.PlaceHolder = "No champion selected"
+
+	startButton := widget.NewButton("Manual Start", func() {
+		go run(status, roleSelect)
+	})
+
+	//ss := "123456789012345678901234"
+	//output := widget.NewTextGridFromString(ss[:23]+"\n"+ss[23:])
+
 	w.SetContent(
 		widget.NewVBox(
 			widget.NewLabel(ProjectName+" "+Version),
 			widget.NewHBox(
 				widget.NewVBox(
-					widget.NewButton("Manual Start", func() {
-						go run(status)
-					}),
+					startButton,
 					status),
 				widget.NewVBox(
 					widget.NewHBox(widget.NewLabel("Auto runes"), enableRunesCheck),
 					widget.NewHBox(widget.NewLabel("Auto items"), enableItemsCheck),
 					widget.NewLabel("Polling interval"),
-					sl))))
+					sl)),
+			roleSelect))
 
+	//output))
 	w.SetFixedSize(true)
 	w.ShowAndRun()
 }
