@@ -1,0 +1,10 @@
+# Game client directory, where league of legends is installed.
+CLIENT_DIRECTORY=D:/Games/Riot Games/League of Legends/
+# Debugging option. Prints extra information
+DEBUG=false
+# Enable automatic rune fetch
+ENABLE_RUNE=true
+# Enable automatic item fetch
+ENABLE_ITEM=true
+# Polling interval in seconds. Value from 1 ~ 5 can be set. 2 is reasonable
+INTERVAL=2
