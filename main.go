@@ -18,9 +18,8 @@ import (
 	"time"
 )
 
-//const InstallDir string = "D:/Games/Riot Games/League of Legends/"
-
-//const InstallDir string = "C:/Riot Games/League of Legends/"
+const ProjectName string = "AutoRunes"
+const Version string = "v0.2"
 
 var cli *http.Client
 var config Config
@@ -604,7 +603,7 @@ func setItems(doc *soup.Root, accId int64, sumId int, champId int, gameType *str
 				PreferredItemSlots:  make([]interface{}, 0),
 				Sortrank:            0,
 				StartedFrom:         "blank",
-				Title:               "AutoRunes Item Page " + (*gameType),
+				Title:               ProjectName + " Item Page " + (*gameType),
 				Type:                "custom",
 				UID:                 "",
 			},
@@ -974,7 +973,7 @@ func main() {
 	ReadConfig()
 
 	a := app.New()
-	w := a.NewWindow("AutoRunes")
+	w := a.NewWindow(ProjectName + " " + Version)
 
 	sl := widget.NewSlider(1, 3)
 	sl.Value = config.Interval
@@ -1000,11 +999,11 @@ func main() {
 
 	w.SetContent(
 		widget.NewVBox(
-			widget.NewLabel("AutoRunes"),
+			widget.NewLabel(ProjectName+" "+Version),
 			widget.NewHBox(
 				widget.NewVBox(
 					widget.NewButton("Manual Start", func() {
-						run(status)
+						go run(status)
 					}),
 					status),
 				widget.NewVBox(
