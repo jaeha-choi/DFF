@@ -1,10 +1,13 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"fyne.io/fyne/app"
+	"fyne.io/fyne/widget"
 	"github.com/anaskhan96/soup"
 	"io"
 	"io/ioutil"
@@ -15,14 +18,25 @@ import (
 	"time"
 )
 
-const InstallDir string = "D:/Games/Riot Games/League of Legends/"
+//const InstallDir string = "D:/Games/Riot Games/League of Legends/"
 
 //const InstallDir string = "C:/Riot Games/League of Legends/"
 
 var cli *http.Client
+var config Config
+
 var values []string
-var interval = 3
-var debug = false
+
+//var interval = 3
+//var debug = false
+
+type Config struct {
+	Debug      bool
+	Interval   float64
+	ClientDir  string
+	EnableRune bool
+	EnableItem bool
+}
 
 type Item struct {
 	Count int    `json:"count"`
@@ -322,14 +336,14 @@ func readLock() string {
 	var err error
 
 	for {
-		file, err = os.Open(InstallDir + "lockfile")
+		file, err = os.Open(config.ClientDir + "lockfile")
 		if err == nil {
 			//fmt.Println("Lockfile found")
 			break
 		} else {
 			fmt.Println("Waiting for League process to open")
 		}
-		time.Sleep(time.Duration(interval) * time.Second)
+		time.Sleep(time.Duration(config.Interval) * time.Second)
 	}
 
 	b, err := ioutil.ReadAll(file)
@@ -379,7 +393,7 @@ func isInChampSelect() bool {
 		panic(err)
 	}
 
-	if data.Timer.AdjustedTimeLeftInPhase <= interval {
+	if float64(data.Timer.AdjustedTimeLeftInPhase) <= config.Interval {
 		return false
 	}
 	return true
@@ -843,20 +857,68 @@ func getChampId(sumId int) int {
 //	fmt.Println(string(responseData))
 //}
 
-func main() {
-	// Initialize http client
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+func ReadConfig() {
+	file, err := os.Open("./config")
+
+	config = Config{
+		Debug:      false,
+		Interval:   2,
+		ClientDir:  "C:/Riot Games/League of Legends/",
+		EnableRune: true,
+		EnableItem: true,
 	}
-	cli = &http.Client{Transport: tr}
 
-	fmt.Println(InstallDir)
+	if err != nil {
+		fmt.Println("Cannot open config file. Default settings will be used.")
+	} else {
+		defer file.Close()
+		configMap := make(map[string]string)
+		scanner := bufio.NewScanner(file)
+		for scanner.Scan() {
+			line := scanner.Text()
+			// Line with # is comments
+			if !strings.HasPrefix(line, "#") {
+				args := strings.SplitN(line, "=", 2)
+				configMap[strings.TrimSpace(args[0])] = strings.TrimSpace(args[1])
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			panic(err)
+		}
 
+		config.ClientDir = configMap["CLIENT_DIRECTORY"]
+		config.Debug, err = strconv.ParseBool(configMap["DEBUG"])
+		if err != nil {
+			panic(err)
+		}
+		config.EnableRune, err = strconv.ParseBool(configMap["ENABLE_RUNE"])
+		if err != nil {
+			panic(err)
+		}
+		config.EnableItem, err = strconv.ParseBool(configMap["ENABLE_ITEM"])
+		if err != nil {
+			panic(err)
+		}
+		config.Interval, err = strconv.ParseFloat(configMap["INTERVAL"], 64)
+		if err != nil {
+			panic(err)
+		}
+
+		if config.Interval < 1 {
+			config.Interval = 1
+		} else if config.Interval > 5 {
+			config.Interval = 5
+		}
+	}
+}
+
+func run(status *widget.Label) {
+	status.SetText("Running")
 	// Read lockfile
 	content := readLock()
 	values = strings.Split(content, ":")
 
-	if debug {
+	if config.Debug {
 		for _, val := range values {
 			fmt.Println(val)
 		}
@@ -885,7 +947,7 @@ func main() {
 		fmt.Println("Waiting for a champion to be selected...")
 		queueId, _ = getQueueId()
 		champId = getChampId(sumId)
-		time.Sleep(time.Duration(interval) * time.Second)
+		time.Sleep(time.Duration(config.Interval) * time.Second)
 	}
 
 	// Loop until champion select phase is over
@@ -897,7 +959,60 @@ func main() {
 			getRunes(accId, sumId, champId, queueId)
 			prevChampId = champId
 		}
-		time.Sleep(time.Duration(interval) * time.Second)
+		time.Sleep(time.Duration(config.Interval) * time.Second)
+	}
+	status.SetText("Not running")
+}
+
+func main() {
+	// Initialize http client
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
+	cli = &http.Client{Transport: tr}
+
+	ReadConfig()
+
+	a := app.New()
+	w := a.NewWindow("AutoRunes")
+
+	sl := widget.NewSlider(1, 3)
+	sl.Value = config.Interval
+	sl.Step = 0.5
+	sl.OnChanged = func(f float64) {
+		fmt.Println("Poll interval: ", f)
+		config.Interval = f
 	}
 
+	status := widget.NewLabel("Not running")
+
+	enableRunesCheck := widget.NewCheck("", func(b bool) {
+		fmt.Println("Auto runes: ", b)
+		config.EnableRune = b
+	})
+	enableRunesCheck.SetChecked(config.EnableRune)
+
+	enableItemsCheck := widget.NewCheck("", func(b bool) {
+		fmt.Println("Auto items: ", b)
+		config.EnableItem = b
+	})
+	enableItemsCheck.SetChecked(config.EnableItem)
+
+	w.SetContent(
+		widget.NewVBox(
+			widget.NewLabel("AutoRunes"),
+			widget.NewHBox(
+				widget.NewVBox(
+					widget.NewButton("Manual Start", func() {
+						run(status)
+					}),
+					status),
+				widget.NewVBox(
+					widget.NewHBox(widget.NewLabel("Auto runes"), enableRunesCheck),
+					widget.NewHBox(widget.NewLabel("Auto items"), enableItemsCheck),
+					widget.NewLabel("Polling interval"),
+					sl))))
+
+	w.SetFixedSize(true)
+	w.ShowAndRun()
 }
