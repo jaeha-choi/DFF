@@ -978,8 +978,8 @@ func run(status *widget.Label, p *widget.Select) {
 					}
 				}
 				p.Refresh()
-				prevChampId = champId
 			}
+			prevChampId = champId
 		}
 		fmt.Println("Checking if Champion ID was updated...")
 		time.Sleep(time.Duration(config.Interval) * time.Second)
