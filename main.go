@@ -1005,7 +1005,7 @@ func main() {
 	a := app.New()
 	w := a.NewWindow(ProjectName + " " + Version)
 
-	sl := widget.NewSlider(1, 3)
+	sl := widget.NewSlider(1, 5)
 	sl.Value = config.Interval
 	sl.Step = 0.5
 	sl.OnChanged = func(f float64) {
