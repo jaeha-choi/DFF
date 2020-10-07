@@ -19,7 +19,7 @@ import (
 )
 
 const ProjectName string = "AutoRunes"
-const Version string = "v0.2"
+const Version string = "v0.3"
 
 var cli *http.Client
 var config Config
@@ -426,13 +426,15 @@ func getAccInfo() (int64, int) {
 		panic(err)
 	}
 
-	fmt.Println("Logged in as...")
-	fmt.Println("Account ID: ", data.AccountID)
-	fmt.Println("Display Name: ", data.DisplayName)
-	fmt.Println("Internal Name: ", data.InternalName)
-	fmt.Println("Player UUID: ", data.Puuid)
-	fmt.Println("Summoner ID: ", data.SummonerID)
-
+	if config.Debug {
+		fmt.Println("Logged in as...")
+		fmt.Println("Account ID: ", data.AccountID)
+		fmt.Println("Display Name: ", data.DisplayName)
+		fmt.Println("Internal Name: ", data.InternalName)
+		fmt.Println("Player UUID: ", data.Puuid)
+		fmt.Println("Summoner ID: ", data.SummonerID)
+	}
+	fmt.Println("API connection functional.")
 	return data.AccountID, data.SummonerID
 }
 
@@ -763,7 +765,6 @@ func getRunes(accId int64, sumId int, champId int, queueId int) [][4]string {
 	if err != nil {
 		panic(err)
 	}
-	// TODO: use flexible region here
 
 	fmt.Println("Selected Champion: ", data.Alias)
 
@@ -782,6 +783,7 @@ func getRunes(accId int64, sumId int, champId int, queueId int) [][4]string {
 		setItems(&doc, accId, sumId, champId, &gameType)
 
 	} else {
+		// Can add region here
 		url = "https://na.op.gg/champion/" + data.Alias
 		resp, err := soup.Get(url)
 		if err != nil {
@@ -992,8 +994,6 @@ func run(status *widget.Label, p *widget.Select) {
 }
 
 func main() {
-	// TODO: add reload config, debug flag
-
 	// Initialize http client
 	tr := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
@@ -1013,7 +1013,12 @@ func main() {
 		config.Interval = f
 	}
 
+	// TODO: add updater
+	// TODO: add write config, debug flag
+	// TODO: add check if in game
+
 	status := widget.NewLabel("Not running")
+	selectedChamp := widget.NewLabel("Not selected")
 
 	enableRunesCheck := widget.NewCheck("", func(b bool) {
 		fmt.Println("Auto runes: ", b)
@@ -1030,21 +1035,33 @@ func main() {
 	roleSelect := widget.NewSelect(nil, nil)
 	roleSelect.PlaceHolder = "No champion selected"
 
-	startButton := widget.NewButton("Manual Start", func() {
-		go run(status, roleSelect)
+	go run(status, roleSelect)
+
+	checkUpdateButton := widget.NewButton("Check Update", func() {
+
 	})
 
 	//ss := "123456789012345678901234"
 	//output := widget.NewTextGridFromString(ss[:23]+"\n"+ss[23:])
 
+	///lol-lobby/v1/lobby/availability
+	///lol-lobby/v1/lobby/countdown
+	///riotclient/get_region_locale
+
 	w.SetContent(
 		widget.NewVBox(
-			widget.NewLabel(ProjectName+" "+Version),
 			widget.NewHBox(
 				widget.NewVBox(
-					startButton,
-					status),
+					widget.NewLabel(ProjectName+" "+Version),
+					widget.NewLabel("Program Status:"),
+					status,
+					widget.NewHBox(widget.NewLabel("Current Champion:")),
+					selectedChamp),
 				widget.NewVBox(
+					checkUpdateButton,
+					widget.NewHBox(widget.NewLabel("Debug"), widget.NewCheck("", func(b bool) {
+						config.Debug = b
+					})),
 					widget.NewHBox(widget.NewLabel("Auto runes"), enableRunesCheck),
 					widget.NewHBox(widget.NewLabel("Auto items"), enableItemsCheck),
 					widget.NewLabel("Polling interval"),
