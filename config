@@ -1,5 +1,5 @@
 # Game client directory, where league of legends is installed.
-CLIENT_DIRECTORY=C:\Riot Games\League of Legends
+CLIENT_DIRECTORY=C:/Riot Games/League of Legends
 # Debugging option. Prints extra information
 DEBUG=false
 # Enable automatic rune fetch
