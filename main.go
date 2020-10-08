@@ -1069,7 +1069,7 @@ func ReadConfig() {
 		if err != nil {
 			panic(err)
 		}
-		config.EnableSpell, err = strconv.ParseBool(configMap["LEFT_SPELL_IS_FLASH"])
+		config.DFlash, err = strconv.ParseBool(configMap["LEFT_SPELL_IS_FLASH"])
 		if err != nil {
 			panic(err)
 		}
@@ -1248,6 +1248,7 @@ func main() {
 	// TODO: add write config, debug flag
 	// TODO: add check if in game
 	// TODO: add button for SetSpells/Dflash/Fflash
+	// TODO: Add infinite execution
 
 	status := widget.NewLabel("Not running")
 	selectedChamp := widget.NewLabel("Not selected")
@@ -1264,6 +1265,16 @@ func main() {
 
 	roleSelect := widget.NewSelect(nil, nil)
 	roleSelect.PlaceHolder = "No champion selected"
+
+	enableSpellCheck := widget.NewCheck("", func(b bool) {
+		config.EnableSpell = b
+	})
+	enableSpellCheck.SetChecked(config.EnableSpell)
+
+	enableDFlash := widget.NewCheck("", func(b bool) {
+		config.DFlash = b
+	})
+	enableDFlash.SetChecked(config.DFlash)
 
 	go run(status, roleSelect)
 
@@ -1306,8 +1317,11 @@ func main() {
 					})),
 					widget.NewHBox(widget.NewLabel("Auto runes"), enableRunesCheck),
 					widget.NewHBox(widget.NewLabel("Auto items"), enableItemsCheck),
+					widget.NewHBox(widget.NewLabel("Auto spells"), enableSpellCheck),
+					widget.NewHBox(widget.NewLabel("Left Flash"), enableDFlash),
 					widget.NewLabel("Polling interval"),
-					sl)),
+					sl,
+				)),
 			roleSelect))
 
 	//output))
