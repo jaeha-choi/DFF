@@ -16,6 +16,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -569,6 +570,20 @@ func getAccInfo() (int64, int) {
 	}
 	fmt.Println("Client API connection functional.")
 	return data.AccountID, data.SummonerID
+}
+
+func getUxStatus() bool {
+	command := "/riotclient/ux-state"
+
+	bodyBytes, err := ioutil.ReadAll(requestApi(&command, false))
+	if err != nil {
+		panic(err)
+	}
+	if string(bodyBytes) == "\"ShowMain\"" {
+		return false
+	} else {
+		return true
+	}
 }
 
 func getQueueId() (int, bool) {
@@ -1218,7 +1233,8 @@ func checkFiles() {
 	}
 }
 
-func run(status *widget.Label, p *widget.Select, champLabel *widget.Label) {
+func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait *sync.WaitGroup) {
+	defer wait.Done()
 	status.SetText("Starting...")
 	// Read lockfile
 	content := readLock()
@@ -1306,6 +1322,23 @@ func run(status *widget.Label, p *widget.Select, champLabel *widget.Label) {
 
 	status.SetText("Idle...")
 
+	time.Sleep(30 * time.Second)
+	inGame := getUxStatus()
+	// Perhaps also check available?
+	for inGame {
+		fmt.Println("In game: ", inGame)
+		time.Sleep(1 * time.Minute)
+		inGame = getUxStatus()
+	}
+}
+
+func runLoop(status *widget.Label, roleSelect *widget.Select, selectedChamp *widget.Label) {
+	var wait sync.WaitGroup
+	for {
+		go run(status, roleSelect, selectedChamp, &wait)
+		wait.Add(1)
+		wait.Wait()
+	}
 }
 
 func main() {
@@ -1364,7 +1397,12 @@ func main() {
 	})
 	enableDFlash.SetChecked(config.DFlash)
 
-	go run(status, roleSelect, selectedChamp)
+	enableDebugging := widget.NewCheck("", func(b bool) {
+		config.Debug = b
+	})
+	enableDebugging.SetChecked(config.Debug)
+
+	go runLoop(status, roleSelect, selectedChamp)
 
 	checkUpdateButton := widget.NewButton("Check Update", func() {
 		req, err := http.Get("https://api.github.com/repos/jaeha-choi/AutoRunes/releases/latest")
@@ -1433,9 +1471,7 @@ func main() {
 					selectedChamp),
 				widget.NewVBox(
 					checkUpdateButton,
-					widget.NewHBox(widget.NewLabel("Debug"), widget.NewCheck("", func(b bool) {
-						config.Debug = b
-					})),
+					widget.NewHBox(widget.NewLabel("Debug"), enableDebugging),
 					widget.NewHBox(widget.NewLabel("Auto runes"), enableRunesCheck),
 					widget.NewHBox(widget.NewLabel("Auto items"), enableItemsCheck),
 					widget.NewHBox(widget.NewLabel("Auto spells"), enableSpellCheck),
