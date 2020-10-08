@@ -6,6 +6,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"fyne.io/fyne"
 	"fyne.io/fyne/app"
 	"fyne.io/fyne/widget"
 	"github.com/anaskhan96/soup"
@@ -63,6 +64,78 @@ var lastRole = ""
 //	} `json:"image"`
 //	Resource string `json:"resource"`
 //}
+type GitHubUpdate struct {
+	URL             string `json:"url"`
+	AssetsURL       string `json:"assets_url"`
+	UploadURL       string `json:"upload_url"`
+	HTMLURL         string `json:"html_url"`
+	ID              int    `json:"id"`
+	NodeID          string `json:"node_id"`
+	TagName         string `json:"tag_name"`
+	TargetCommitish string `json:"target_commitish"`
+	Name            string `json:"name"`
+	Draft           bool   `json:"draft"`
+	Author          struct {
+		Login             string `json:"login"`
+		ID                int    `json:"id"`
+		NodeID            string `json:"node_id"`
+		AvatarURL         string `json:"avatar_url"`
+		GravatarID        string `json:"gravatar_id"`
+		URL               string `json:"url"`
+		HTMLURL           string `json:"html_url"`
+		FollowersURL      string `json:"followers_url"`
+		FollowingURL      string `json:"following_url"`
+		GistsURL          string `json:"gists_url"`
+		StarredURL        string `json:"starred_url"`
+		SubscriptionsURL  string `json:"subscriptions_url"`
+		OrganizationsURL  string `json:"organizations_url"`
+		ReposURL          string `json:"repos_url"`
+		EventsURL         string `json:"events_url"`
+		ReceivedEventsURL string `json:"received_events_url"`
+		Type              string `json:"type"`
+		SiteAdmin         bool   `json:"site_admin"`
+	} `json:"author"`
+	Prerelease  bool      `json:"prerelease"`
+	CreatedAt   time.Time `json:"created_at"`
+	PublishedAt time.Time `json:"published_at"`
+	Assets      []struct {
+		URL      string      `json:"url"`
+		ID       int         `json:"id"`
+		NodeID   string      `json:"node_id"`
+		Name     string      `json:"name"`
+		Label    interface{} `json:"label"`
+		Uploader struct {
+			Login             string `json:"login"`
+			ID                int    `json:"id"`
+			NodeID            string `json:"node_id"`
+			AvatarURL         string `json:"avatar_url"`
+			GravatarID        string `json:"gravatar_id"`
+			URL               string `json:"url"`
+			HTMLURL           string `json:"html_url"`
+			FollowersURL      string `json:"followers_url"`
+			FollowingURL      string `json:"following_url"`
+			GistsURL          string `json:"gists_url"`
+			StarredURL        string `json:"starred_url"`
+			SubscriptionsURL  string `json:"subscriptions_url"`
+			OrganizationsURL  string `json:"organizations_url"`
+			ReposURL          string `json:"repos_url"`
+			EventsURL         string `json:"events_url"`
+			ReceivedEventsURL string `json:"received_events_url"`
+			Type              string `json:"type"`
+			SiteAdmin         bool   `json:"site_admin"`
+		} `json:"uploader"`
+		ContentType        string    `json:"content_type"`
+		State              string    `json:"state"`
+		Size               int       `json:"size"`
+		DownloadCount      int       `json:"download_count"`
+		CreatedAt          time.Time `json:"created_at"`
+		UpdatedAt          time.Time `json:"updated_at"`
+		BrowserDownloadURL string    `json:"browser_download_url"`
+	} `json:"assets"`
+	TarballURL string `json:"tarball_url"`
+	ZipballURL string `json:"zipball_url"`
+	Body       string `json:"body"`
+}
 
 type SpellFile struct {
 	Type    string                 `json:"type"`
@@ -487,7 +560,7 @@ func getAccInfo() (int64, int) {
 		fmt.Println("Player UUID: ", data.Puuid)
 		fmt.Println("Summoner ID: ", data.SummonerID)
 	}
-	fmt.Println("API connection functional.")
+	fmt.Println("Client API connection functional.")
 	return data.AccountID, data.SummonerID
 }
 
@@ -1236,6 +1309,10 @@ func main() {
 	a := app.New()
 	w := a.NewWindow(ProjectName + " " + Version)
 
+	// TODO: add write config, debug flag
+	// TODO: add check if in game
+	// TODO: Add infinite execution
+
 	sl := widget.NewSlider(1, 5)
 	sl.Value = config.Interval
 	sl.Step = 0.5
@@ -1243,12 +1320,6 @@ func main() {
 		fmt.Println("Poll interval: ", f)
 		config.Interval = f
 	}
-
-	// TODO: add updater
-	// TODO: add write config, debug flag
-	// TODO: add check if in game
-	// TODO: add button for SetSpells/Dflash/Fflash
-	// TODO: Add infinite execution
 
 	status := widget.NewLabel("Not running")
 	selectedChamp := widget.NewLabel("Not selected")
@@ -1279,19 +1350,52 @@ func main() {
 	go run(status, roleSelect)
 
 	checkUpdateButton := widget.NewButton("Check Update", func() {
-		req, err := http.NewRequest("PATCH", values[4]+"://127.0.0.1:"+values[2]+"/lol-champ-select/v1/session/my-selection", nil)
+		req, err := http.Get("https://api.github.com/repos/jaeha-choi/AutoRunes/releases/latest")
 		if err != nil {
 			panic(err)
 		}
 
-		req.SetBasicAuth("riot", values[3])
+		if req.StatusCode != 200 {
+			widget.ShowPopUpAtPosition(widget.NewLabel("Could not connect to github repository."),
+				w.Canvas(), fyne.NewPos(50, 50))
+		}
 
-		resp, err := cli.Do(req)
-
+		var update GitHubUpdate
+		err = json.NewDecoder(req.Body).Decode(&update)
 		if err != nil {
 			panic(err)
 		}
-		fmt.Println(resp.StatusCode)
+
+		if update.TagName != Version {
+			name := strings.Split(update.Assets[0].BrowserDownloadURL, "/")
+			out, err := os.Create(name[len(name)-1])
+			if err != nil {
+				panic(err)
+			}
+			defer out.Close()
+
+			resp, err := http.Get(update.Assets[0].BrowserDownloadURL)
+			if err != nil {
+				panic(err)
+			}
+			defer resp.Body.Close()
+
+			_, err = io.Copy(out, resp.Body)
+			if err != nil {
+				panic(err)
+			}
+
+			fmt.Println(name[len(name)-1] + " downloaded.")
+			popup := widget.NewVBox(widget.NewLabel("Version "+update.TagName+" downloaded."),
+				widget.NewLabel("Program will now exit."))
+			widget.ShowPopUpAtPosition(popup,
+				w.Canvas(), fyne.NewPos(50, 50))
+			time.Sleep(3 * time.Second)
+			os.Exit(0)
+		} else {
+			widget.ShowPopUpAtPosition(widget.NewLabel("No update found"),
+				w.Canvas(), fyne.NewPos(50, 50))
+		}
 	})
 
 	//ss := "123456789012345678901234"
