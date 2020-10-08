@@ -1011,7 +1011,7 @@ func downloadFile(url string) {
 	fmt.Println(fileName[len(fileName)-1] + " downloaded.")
 }
 
-func getRunes(accId int64, sumId int, champId int, queueId int) [][4]string {
+func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widget.Label) [][4]string {
 	command := "/lol-champions/v1/inventories/" + strconv.Itoa(sumId) + "/champions/" + strconv.Itoa(champId)
 	var data Champion
 	var gameType, url string
@@ -1022,7 +1022,7 @@ func getRunes(accId int64, sumId int, champId int, queueId int) [][4]string {
 	if err != nil {
 		panic(err)
 	}
-
+	champLabel.SetText(data.Alias)
 	fmt.Println("Selected Champion: ", data.Alias)
 
 	if queueId == 900 {
@@ -1068,7 +1068,7 @@ func getRunes(accId int64, sumId int, champId int, queueId int) [][4]string {
 			rate := pos.Find("span", "class", "champion-stats-header__position__rate").Text()
 
 			fmt.Println(i, ". "+role+": ", rate)
-			posUrlList[i][0] = role
+			posUrlList[i][0] = strings.TrimSpace(role)
 			posUrlList[i][1] = rate
 			posUrlList[i][2] = link
 			posUrlList[i][3] = gameType
@@ -1218,8 +1218,8 @@ func checkFiles() {
 	}
 }
 
-func run(status *widget.Label, p *widget.Select) {
-	status.SetText("Running")
+func run(status *widget.Label, p *widget.Select, champLabel *widget.Label) {
+	status.SetText("Starting...")
 	// Read lockfile
 	content := readLock()
 	values = strings.Split(content, ":")
@@ -1250,6 +1250,7 @@ func run(status *widget.Label, p *widget.Select) {
 
 	// Check if in lobby
 	for champId == 0 {
+		status.SetText("Waiting...")
 		fmt.Println("Waiting for a champion to be selected...")
 		queueId, _ = getQueueId()
 		champId = getChampId(sumId)
@@ -1261,21 +1262,24 @@ func run(status *widget.Label, p *widget.Select) {
 		champId := getChampId(sumId)
 
 		if champId != 0 && prevChampId != champId {
-			result := getRunes(accId, sumId, champId, queueId)
+			status.SetText("Setting...")
+			result := getRunes(accId, sumId, champId, queueId, champLabel)
+			status.SetText("Updated...")
 			if len(result) > 0 {
 				options := make([]string, len(result))
 
 				for x, elem := range result {
-					options[x] = elem[0] + "-Pick rate: " + elem[1]
+					options[x] = elem[0] + " - Pick rate: " + elem[1]
 				}
 
 				p.Options = options
 				p.Selected = options[0]
 				p.OnChanged = func(s string) {
-					sel := strings.Split(s, "-")[0]
+					sel := strings.TrimSpace(strings.Split(s, "-")[0])
 					if lastRole != sel {
 						for _, res := range result {
 							if res[0] == sel {
+								status.SetText("Setting...")
 								resp, err := soup.Get(res[2])
 								if err != nil {
 									panic(err)
@@ -1284,7 +1288,8 @@ func run(status *widget.Label, p *widget.Select) {
 								setRunes(&doc, &(res[3]))
 								setItems(&doc, accId, sumId, champId, &(res[3]))
 								setSpells(&doc)
-								lastRole = res[0]
+								lastRole = strings.TrimSpace(res[0])
+								status.SetText("Updated...")
 							}
 						}
 					}
@@ -1299,7 +1304,7 @@ func run(status *widget.Label, p *widget.Select) {
 	p.Options = nil
 	p.Refresh()
 
-	status.SetText("Not running")
+	status.SetText("Idle...")
 
 }
 
@@ -1324,12 +1329,17 @@ func main() {
 	sl.Value = config.Interval
 	sl.Step = 0.5
 	sl.OnChanged = func(f float64) {
-		fmt.Println("Poll interval: ", f)
+		//fmt.Println("Poll interval: ", f)
 		config.Interval = f
 	}
 
-	status := widget.NewLabel("Not running")
-	selectedChamp := widget.NewLabel("Not selected")
+	infoTextStyle := fyne.TextStyle{
+		Bold:      true,
+		Italic:    false,
+		Monospace: true,
+	}
+	status := widget.NewLabelWithStyle("Not running", fyne.TextAlignCenter, infoTextStyle)
+	selectedChamp := widget.NewLabelWithStyle("Not selected", fyne.TextAlignCenter, infoTextStyle)
 
 	enableRunesCheck := widget.NewCheck("", func(b bool) {
 		config.EnableRune = b
@@ -1354,7 +1364,7 @@ func main() {
 	})
 	enableDFlash.SetChecked(config.DFlash)
 
-	go run(status, roleSelect)
+	go run(status, roleSelect, selectedChamp)
 
 	checkUpdateButton := widget.NewButton("Check Update", func() {
 		req, err := http.Get("https://api.github.com/repos/jaeha-choi/AutoRunes/releases/latest")
