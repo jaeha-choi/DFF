@@ -1413,43 +1413,43 @@ func main() {
 		if req.StatusCode != 200 {
 			widget.ShowPopUpAtPosition(widget.NewLabel("Could not connect to github repository."),
 				w.Canvas(), fyne.NewPos(50, 50))
-		}
-
-		var update GitHubUpdate
-		err = json.NewDecoder(req.Body).Decode(&update)
-		if err != nil {
-			panic(err)
-		}
-
-		if update.TagName != Version {
-			name := strings.Split(update.Assets[0].BrowserDownloadURL, "/")
-			out, err := os.Create(name[len(name)-1])
-			if err != nil {
-				panic(err)
-			}
-			defer out.Close()
-
-			resp, err := http.Get(update.Assets[0].BrowserDownloadURL)
-			if err != nil {
-				panic(err)
-			}
-			defer resp.Body.Close()
-
-			_, err = io.Copy(out, resp.Body)
-			if err != nil {
-				panic(err)
-			}
-
-			fmt.Println(name[len(name)-1] + " downloaded.")
-			popup := widget.NewVBox(widget.NewLabel("Version "+update.TagName+" downloaded."),
-				widget.NewLabel("Program will now exit."))
-			widget.ShowPopUpAtPosition(popup,
-				w.Canvas(), fyne.NewPos(50, 50))
-			time.Sleep(3 * time.Second)
-			os.Exit(0)
 		} else {
-			widget.ShowPopUpAtPosition(widget.NewLabel("No update found"),
-				w.Canvas(), fyne.NewPos(50, 50))
+			var update GitHubUpdate
+			err = json.NewDecoder(req.Body).Decode(&update)
+			if err != nil {
+				panic(err)
+			}
+
+			if update.TagName != Version {
+				name := strings.Split(update.Assets[0].BrowserDownloadURL, "/")
+				out, err := os.Create(name[len(name)-1])
+				if err != nil {
+					panic(err)
+				}
+				defer out.Close()
+
+				resp, err := http.Get(update.Assets[0].BrowserDownloadURL)
+				if err != nil {
+					panic(err)
+				}
+				defer resp.Body.Close()
+
+				_, err = io.Copy(out, resp.Body)
+				if err != nil {
+					panic(err)
+				}
+
+				fmt.Println(name[len(name)-1] + " downloaded.")
+				popup := widget.NewVBox(widget.NewLabel("Version "+update.TagName+" downloaded."),
+					widget.NewLabel("Program will now exit."))
+				widget.ShowPopUpAtPosition(popup,
+					w.Canvas(), fyne.NewPos(50, 50))
+				time.Sleep(3 * time.Second)
+				os.Exit(0)
+			} else {
+				widget.ShowPopUpAtPosition(widget.NewLabel("No update found"),
+					w.Canvas(), fyne.NewPos(50, 50))
+			}
 		}
 	})
 
