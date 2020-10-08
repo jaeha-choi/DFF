@@ -30,12 +30,65 @@ var lastRole = ""
 //var interval = 3
 //var debug = false
 
+//type Spell struct {
+//	ID           string `json:"id"`
+//	Name         string `json:"name"`
+//	Description  string `json:"description"`
+//	Tooltip      string `json:"tooltip"`
+//	Maxrank      int    `json:"maxrank"`
+//	Cooldown     []int  `json:"cooldown"`
+//	CooldownBurn string `json:"cooldownBurn"`
+//	Cost         []int  `json:"cost"`
+//	CostBurn     string `json:"costBurn"`
+//	Datavalues   struct {
+//	} `json:"datavalues"`
+//	Effect        []interface{} `json:"effect"`
+//	EffectBurn    []interface{} `json:"effectBurn"`
+//	Vars          []interface{} `json:"vars"`
+//	Key           string        `json:"key"`
+//	SummonerLevel int           `json:"summonerLevel"`
+//	Modes         []string      `json:"modes"`
+//	CostType      string        `json:"costType"`
+//	Maxammo       string        `json:"maxammo"`
+//	Range         []int         `json:"range"`
+//	RangeBurn     string        `json:"rangeBurn"`
+//	Image         struct {
+//		Full   string `json:"full"`
+//		Sprite string `json:"sprite"`
+//		Group  string `json:"group"`
+//		X      int    `json:"x"`
+//		Y      int    `json:"y"`
+//		W      int    `json:"w"`
+//		H      int    `json:"h"`
+//	} `json:"image"`
+//	Resource string `json:"resource"`
+//}
+
+type SpellFile struct {
+	Type    string                 `json:"type"`
+	Version string                 `json:"version"`
+	Data    map[string]interface{} `json:"data"`
+}
+
+type FileVersion struct {
+	Version string `json:"version"`
+}
+
+type MySelect struct {
+	//SelectedSkinID int32 `json:"selectedSkinId"`
+	Spell1ID int64 `json:"spell1Id"`
+	Spell2ID int64 `json:"spell2Id"`
+	//WardSkinID     int64 `json:"wardSkinId"`
+}
+
 type Config struct {
-	Debug      bool
-	Interval   float64
-	ClientDir  string
-	EnableRune bool
-	EnableItem bool
+	Debug       bool
+	Interval    float64
+	ClientDir   string
+	EnableRune  bool
+	EnableItem  bool
+	EnableSpell bool
+	DFlash      bool
 }
 
 type Item struct {
@@ -472,6 +525,9 @@ func deleteRunePage(runePageId int) bool {
 }
 
 func setItems(doc *soup.Root, accId int64, sumId int, champId int, gameType *string) {
+	if !config.EnableItem {
+		return
+	}
 	builds := (*doc).FindAll("tr", "class", "champion-overview__row")
 	blockCnt := len((*doc).FindAll("tr", "class", "champion-overview__row--first"))
 	blockCnt++
@@ -567,8 +623,8 @@ func setItems(doc *soup.Root, accId int64, sumId int, champId int, gameType *str
 	blockList[1] = consumable
 
 	if config.Debug {
-		fmt.Println(len(otherItemSet))
-		fmt.Println(willBeAdded)
+		fmt.Println("Total number of items:", len(otherItemSet))
+		fmt.Println("Count of items that will be added:", willBeAdded)
 	}
 
 	itemList := make([]Item, willBeAdded)
@@ -645,7 +701,107 @@ func setItems(doc *soup.Root, accId int64, sumId int, champId int, gameType *str
 	}
 }
 
+func setSpells(doc *soup.Root) {
+	if !config.EnableSpell {
+		return
+	}
+
+	imgs := (*doc).Find("td", "class", "champion-overview__data")
+
+	spellImgs := imgs.FindAll("img", "class", "tip")
+
+	spellNameList := make([]string, len(spellImgs))
+	for i, img := range spellImgs {
+		str := img.Attrs()["src"]
+		spellNameList[i] = str[strings.LastIndex(str, "/")+1 : strings.Index(str, ".png")]
+	}
+
+	var spellFile SpellFile
+
+	f, err := ioutil.ReadFile("./data/" + "summoner.json")
+	if err != nil {
+		panic(err)
+	}
+	//var data interface{}
+	err = json.Unmarshal(f, &spellFile)
+	if err != nil {
+		panic(err)
+	}
+
+	if config.Debug {
+		fmt.Println("summoner.json version: ", spellFile.Version)
+		fmt.Println("Total spell count: ", len(spellFile.Data))
+	}
+
+	spellKeyList := make([]int64, len(spellImgs))
+	for x := 0; x < 10; x++ {
+
+		i := 0
+		for _, spells := range spellFile.Data {
+			/* This works too, but takes 10 times longer
+			var spell Spell
+			jsonStr, err := json.Marshal(spells)
+			if err != nil {
+				panic(err)
+			}
+			err = json.Unmarshal(jsonStr, &spell)
+			//fmt.Println(spell.Name)
+			//fmt.Println(spell.Key)
+			*/
+
+			news := spells.(map[string]interface{})
+			tempSpellName := news["id"]
+			if tempSpellName == spellNameList[0] || tempSpellName == spellNameList[1] {
+				spellKeyList[i], _ = strconv.ParseInt(news["key"].(string), 10, 64)
+				i++
+			}
+		}
+	}
+
+	// If user is using D key as flash, set flash for D
+	// If user is using F key as flash, set flash for F
+	// Otherwise, no change.
+	if config.DFlash && spellKeyList[1] == 4 {
+		spellKeyList[1] = spellKeyList[0]
+		spellKeyList[0] = 4
+	} else if !config.Debug && spellKeyList[0] == 4 {
+		spellKeyList[0] = spellKeyList[1]
+		spellKeyList[1] = 4
+	}
+
+	spells := MySelect{
+		Spell1ID: spellKeyList[0],
+		Spell2ID: spellKeyList[1],
+	}
+
+	b := new(bytes.Buffer)
+	err = json.NewEncoder(b).Encode(spells)
+
+	command := "/lol-champ-select/v1/session/my-selection"
+	req, err := http.NewRequest("PATCH", values[4]+"://127.0.0.1:"+values[2]+command, b)
+	if err != nil {
+		panic(err)
+	}
+
+	req.SetBasicAuth("riot", values[3])
+
+	resp, err := cli.Do(req)
+
+	if err != nil {
+		panic(err)
+	}
+
+	if resp.StatusCode == 204 {
+		fmt.Println("Spell update successful")
+	} else {
+		fmt.Println("Spell update/skin update fail")
+	}
+}
+
 func setRunes(doc *soup.Root, gameType *string) {
+	if !config.EnableRune {
+		return
+	}
 	// Delete "AutoRune" page
 	command := "/lol-perks/v1/pages"
 	var runePages RunePages
@@ -754,6 +910,27 @@ func setRunes(doc *soup.Root, gameType *string) {
 	}
 }
 
+func downloadFile(url string) {
+	fileName := strings.Split(url, "/")
+	out, err := os.Create("./data/" + fileName[len(fileName)-1])
+	if err != nil {
+		panic(err)
+	}
+	defer out.Close()
+
+	resp, err := http.Get(url)
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	_, err = io.Copy(out, resp.Body)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println(fileName[len(fileName)-1] + " downloaded.")
+}
+
 func getRunes(accId int64, sumId int, champId int, queueId int) [][4]string {
 	command := "/lol-champions/v1/inventories/" + strconv.Itoa(sumId) + "/champions/" + strconv.Itoa(champId)
 	var data Champion
@@ -781,6 +958,7 @@ func getRunes(accId int64, sumId int, champId int, queueId int) [][4]string {
 
 		setRunes(&doc, &gameType)
 		setItems(&doc, accId, sumId, champId, &gameType)
+		setSpells(&doc)
 
 	} else {
 		// Can add region here
@@ -794,6 +972,7 @@ func getRunes(accId int64, sumId int, champId int, queueId int) [][4]string {
 
 		setRunes(&doc, &gameType)
 		setItems(&doc, accId, sumId, champId, &gameType)
+		setSpells(&doc)
 
 		// Find champion positions
 		positions := doc.FindAll("li", "class", "champion-stats-header__position")
@@ -842,27 +1021,17 @@ func getChampId(sumId int) int {
 	return champId
 }
 
-//func pageTest(){
-//	resp, err := http.Get("https://na.op.gg/champion/Lucian")
-//	if err != nil {
-//		panic(err)
-//	}
-//	responseData,err := ioutil.ReadAll(resp.Body)
-//	if err != nil {
-//		panic(err)
-//	}
-//	fmt.Println(string(responseData))
-//}
-
 func ReadConfig() {
 	file, err := os.Open("./config")
 
 	config = Config{
-		Debug:      false,
-		Interval:   2,
-		ClientDir:  "C:/Riot Games/League of Legends/",
-		EnableRune: true,
-		EnableItem: true,
+		Debug:       false,
+		Interval:    2,
+		ClientDir:   "C:/Riot Games/League of Legends/",
+		EnableRune:  true,
+		EnableItem:  true,
+		EnableSpell: true,
+		DFlash:      true,
 	}
 
 	if err != nil {
@@ -874,7 +1043,7 @@ func ReadConfig() {
 		for scanner.Scan() {
 			line := scanner.Text()
 			// Line with # is comments
-			if !strings.HasPrefix(line, "#") {
+			if !strings.HasPrefix(line, "#") && line != "" {
 				args := strings.SplitN(line, "=", 2)
 				configMap[strings.TrimSpace(args[0])] = strings.TrimSpace(args[1])
 			}
@@ -896,6 +1065,14 @@ func ReadConfig() {
 		if err != nil {
 			panic(err)
 		}
+		config.EnableSpell, err = strconv.ParseBool(configMap["ENABLE_SPELL"])
+		if err != nil {
+			panic(err)
+		}
+		config.EnableSpell, err = strconv.ParseBool(configMap["LEFT_SPELL_IS_FLASH"])
+		if err != nil {
+			panic(err)
+		}
 		config.Interval, err = strconv.ParseFloat(configMap["INTERVAL"], 64)
 		if err != nil {
 			panic(err)
@@ -905,6 +1082,58 @@ func ReadConfig() {
 			config.Interval = 1
 		} else if config.Interval > 5 {
 			config.Interval = 5
+		}
+	}
+}
+
+func checkFiles() {
+	resp, err := http.Get("https://ddragon.leagueoflegends.com/api/versions.json")
+	if err != nil {
+		panic(err)
+	}
+	defer resp.Body.Close()
+
+	var version []string
+	err = json.NewDecoder(resp.Body).Decode(&version)
+
+	if err != nil {
+		panic(err)
+	}
+
+	leagueVersion := version[0]
+
+	if _, err := os.Stat("./data"); os.IsNotExist(err) {
+		_ = os.Mkdir("./data", 0700)
+		// Summoner spells
+		downloadFile("http://ddragon.leagueoflegends.com/cdn/" + leagueVersion + "/data/en_US/" + "summoner.json")
+		// Items
+		//downloadFile("http://ddragon.leagueoflegends.com/cdn/"+ leagueVersion +"/data/en_US/"+"item.json")
+		// Maps
+		//downloadFile("http://ddragon.leagueoflegends.com/cdn/"+ leagueVersion +"/data/en_US/"+"map.json.json")
+		// Runes
+		//downloadFile("http://ddragon.leagueoflegends.com/cdn/"+ leagueVersion +"/data/en_US/"+"runesReforged.json")
+		// Champions
+		//downloadFile("http://ddragon.leagueoflegends.com/cdn/"+ leagueVersion +"/data/en_US/"+"champion.json")
+	} else {
+		files, err := ioutil.ReadDir("./data")
+		if err != nil {
+			panic(err)
+		}
+
+		for _, file := range files {
+			var ver FileVersion
+			f, err := ioutil.ReadFile("./data/" + file.Name())
+			if err != nil {
+				panic(err)
+			}
+			//var data interface{}
+			err = json.Unmarshal(f, &ver)
+			if err != nil {
+				panic(err)
+			}
+			if leagueVersion != ver.Version {
+				downloadFile("http://ddragon.leagueoflegends.com/cdn/" + leagueVersion + "/data/en_US/" + file.Name())
+			}
 		}
 	}
 }
@@ -974,6 +1203,7 @@ func run(status *widget.Label, p *widget.Select) {
 								doc := soup.HTMLParse(resp)
 								setRunes(&doc, &(res[3]))
 								setItems(&doc, accId, sumId, champId, &(res[3]))
+								setSpells(&doc)
 								lastRole = res[0]
 							}
 						}
@@ -1001,6 +1231,7 @@ func main() {
 	cli = &http.Client{Transport: tr}
 
 	ReadConfig()
+	checkFiles()
 
 	a := app.New()
 	w := a.NewWindow(ProjectName + " " + Version)
@@ -1016,18 +1247,17 @@ func main() {
 	// TODO: add updater
 	// TODO: add write config, debug flag
 	// TODO: add check if in game
+	// TODO: add button for SetSpells/Dflash/Fflash
 
 	status := widget.NewLabel("Not running")
 	selectedChamp := widget.NewLabel("Not selected")
 
 	enableRunesCheck := widget.NewCheck("", func(b bool) {
-		fmt.Println("Auto runes: ", b)
 		config.EnableRune = b
 	})
 	enableRunesCheck.SetChecked(config.EnableRune)
 
 	enableItemsCheck := widget.NewCheck("", func(b bool) {
-		fmt.Println("Auto items: ", b)
 		config.EnableItem = b
 	})
 	enableItemsCheck.SetChecked(config.EnableItem)
@@ -1038,7 +1268,19 @@ func main() {
 	go run(status, roleSelect)
 
 	checkUpdateButton := widget.NewButton("Check Update", func() {
+		req, err := http.NewRequest("PATCH", values[4]+"://127.0.0.1:"+values[2]+"/lol-champ-select/v1/session/my-selection", nil)
+		if err != nil {
+			panic(err)
+		}
 
+		req.SetBasicAuth("riot", values[3])
+
+		resp, err := cli.Do(req)
+
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(resp.StatusCode)
 	})
 
 	//ss := "123456789012345678901234"
