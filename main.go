@@ -481,7 +481,7 @@ func readLock() string {
 	return string(b)
 }
 
-func requestApi(command *string) io.ReadCloser {
+func requestApi(command *string, loopFlag bool) io.ReadCloser {
 	req, err := http.NewRequest("GET", values[4]+"://127.0.0.1:"+values[2]+(*command), nil)
 	if err != nil {
 		panic(err)
@@ -490,6 +490,13 @@ func requestApi(command *string) io.ReadCloser {
 	req.SetBasicAuth("riot", values[3])
 
 	resp, err := cli.Do(req)
+
+	if loopFlag {
+		for err != nil || resp.StatusCode != 200 {
+			resp, err = cli.Do(req)
+			time.Sleep(time.Duration(config.Interval) * time.Second)
+		}
+	}
 
 	if err != nil {
 		panic(err)
@@ -513,7 +520,7 @@ func isInChampSelect() bool {
 	command := "/lol-champ-select/v1/session"
 	var data ChampSelect
 
-	err := json.NewDecoder(requestApi(&command)).Decode(&data)
+	err := json.NewDecoder(requestApi(&command, false)).Decode(&data)
 
 	if err != nil {
 		panic(err)
@@ -546,7 +553,7 @@ func getAccInfo() (int64, int) {
 	command := "/lol-summoner/v1/current-summoner" // returns login information
 
 	var data AccountInfo
-	err := json.NewDecoder(requestApi(&command)).Decode(&data)
+	err := json.NewDecoder(requestApi(&command, true)).Decode(&data)
 
 	if err != nil {
 		panic(err)
@@ -567,7 +574,7 @@ func getAccInfo() (int64, int) {
 func getQueueId() (int, bool) {
 	command := "/lol-gameflow/v1/gameflow-metadata/player-status"
 	var queueInfo QueueInfo
-	err := json.NewDecoder(requestApi(&command)).Decode(&queueInfo)
+	err := json.NewDecoder(requestApi(&command, false)).Decode(&queueInfo)
 	if err != nil {
 		panic(err)
 	}
@@ -878,7 +885,7 @@ func setRunes(doc *soup.Root, gameType *string) {
 	// Delete "AutoRune" page
 	command := "/lol-perks/v1/pages"
 	var runePages RunePages
-	err := json.NewDecoder(requestApi(&command)).Decode(&runePages)
+	err := json.NewDecoder(requestApi(&command, false)).Decode(&runePages)
 
 	if err != nil {
 		panic(err)
@@ -1010,7 +1017,7 @@ func getRunes(accId int64, sumId int, champId int, queueId int) [][4]string {
 	var gameType, url string
 	var posUrlList [][4]string = nil
 
-	err := json.NewDecoder(requestApi(&command)).Decode(&data)
+	err := json.NewDecoder(requestApi(&command, false)).Decode(&data)
 
 	if err != nil {
 		panic(err)
@@ -1078,7 +1085,7 @@ func getChampId(sumId int) int {
 	var data ChampSelect
 	var champId = 0
 
-	err := json.NewDecoder(requestApi(&command)).Decode(&data)
+	err := json.NewDecoder(requestApi(&command, false)).Decode(&data)
 
 	if err != nil {
 		panic(err)
