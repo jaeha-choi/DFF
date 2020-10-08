@@ -1,5 +1,5 @@
 # Game client directory, where league of legends is installed.
-CLIENT_DIRECTORY=C:/Riot Games/League of Legends
+CLIENT_DIRECTORY=C:/Riot Games/League of Legends/
 
 # Enable automatic rune fetch
 ENABLE_RUNE=true
@@ -13,8 +13,8 @@ ENABLE_SPELL=true
 # Polling interval in seconds. Value from 1 ~ 5 can be set. 2 is reasonable
 INTERVAL=2
 
-# If youre using left slot (D spell) for flash, set as true.
-# If youre using right slot (F spell) for flash, set as false.
+# If you are using left slot (D spell) for flash, set as true.
+# If you are using right slot (F spell) for flash, set as false.
 # This option only works if Flash is a recommended spell
 LEFT_SPELL_IS_FLASH=true
 
