@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-const ProjectName string = "AutoRunes"
+const ProjectName string = "DFF!"
 const Version string = "v0.3"
 
 var cli *http.Client
@@ -1405,7 +1405,7 @@ func main() {
 	go runLoop(status, roleSelect, selectedChamp)
 
 	checkUpdateButton := widget.NewButton("Check Update", func() {
-		req, err := http.Get("https://api.github.com/repos/jaeha-choi/AutoRunes/releases/latest")
+		req, err := http.Get("https://api.github.com/repos/jaeha-choi/DFF/releases/latest")
 		if err != nil {
 			panic(err)
 		}
