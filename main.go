@@ -1115,7 +1115,15 @@ func getChampId(sumId int) int {
 	return champId
 }
 
-func ReadConfig() {
+func writeConfig() {
+	jsonConf, _ := json.MarshalIndent(config, "", "\t")
+	err := ioutil.WriteFile("config.json", jsonConf, 0644)
+	if err != nil {
+		panic(err)
+	}
+}
+
+func readConfig() {
 	_, err := os.Stat("config.json")
 
 	config = Config{
@@ -1130,11 +1138,7 @@ func ReadConfig() {
 
 	if os.IsNotExist(err) {
 		fmt.Println("Cannot open config file. Default settings will be used.")
-		jsonConf, _ := json.MarshalIndent(config, "", "\t")
-		err := ioutil.WriteFile("config.json", jsonConf, 0644)
-		if err != nil {
-			panic(err)
-		}
+		writeConfig()
 	} else {
 		jsonConf, _ := ioutil.ReadFile("config.json")
 		err := json.Unmarshal(jsonConf, &config)
@@ -1317,7 +1321,7 @@ func main() {
 	}
 	cli = &http.Client{Transport: tr}
 
-	ReadConfig()
+	readConfig()
 	checkFiles()
 
 	a := app.New()
@@ -1453,4 +1457,5 @@ func main() {
 	//output))
 	w.SetFixedSize(true)
 	w.ShowAndRun()
+	writeConfig()
 }
