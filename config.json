@@ -1,0 +1,9 @@
+{
+  "debug": false,
+  "interval": 2,
+  "client_dir": "C:/Riot Games/League of Legends/",
+  "enable_rune": true,
+  "enable_item": true,
+  "enable_spell": true,
+  "d_flash": true
+}

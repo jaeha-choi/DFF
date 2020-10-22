@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
@@ -21,7 +20,7 @@ import (
 )
 
 const ProjectName string = "DFF!"
-const Version string = "v0.3"
+const Version string = "v0.4"
 
 var cli *http.Client
 var config Config
@@ -156,13 +155,13 @@ type MySelect struct {
 }
 
 type Config struct {
-	Debug       bool
-	Interval    float64
-	ClientDir   string
-	EnableRune  bool
-	EnableItem  bool
-	EnableSpell bool
-	DFlash      bool
+	Debug       bool    `json:"debug"`
+	Interval    float64 `json:"interval"`
+	ClientDir   string  `json:"client_dir"`
+	EnableRune  bool    `json:"enable_rune"`
+	EnableItem  bool    `json:"enable_item"`
+	EnableSpell bool    `json:"enable_spell"`
+	DFlash      bool    `json:"d_flash"`
 }
 
 type Item struct {
@@ -1117,7 +1116,7 @@ func getChampId(sumId int) int {
 }
 
 func ReadConfig() {
-	file, err := os.Open("./config")
+	_, err := os.Stat("config.json")
 
 	config = Config{
 		Debug:       false,
@@ -1129,46 +1128,16 @@ func ReadConfig() {
 		DFlash:      true,
 	}
 
-	if err != nil {
+	if os.IsNotExist(err) {
 		fmt.Println("Cannot open config file. Default settings will be used.")
+		jsonConf, _ := json.MarshalIndent(config, "", "\t")
+		err := ioutil.WriteFile("config.json", jsonConf, 0644)
+		if err != nil {
+			panic(err)
+		}
 	} else {
-		defer file.Close()
-		configMap := make(map[string]string)
-		scanner := bufio.NewScanner(file)
-		for scanner.Scan() {
-			line := scanner.Text()
-			// Line with # is comments
-			if !strings.HasPrefix(line, "#") && line != "" {
-				args := strings.SplitN(line, "=", 2)
-				configMap[strings.TrimSpace(args[0])] = strings.TrimSpace(args[1])
-			}
-		}
-		if err := scanner.Err(); err != nil {
-			panic(err)
-		}
-
-		config.ClientDir = configMap["CLIENT_DIRECTORY"]
-		config.Debug, err = strconv.ParseBool(configMap["DEBUG"])
-		if err != nil {
-			panic(err)
-		}
-		config.EnableRune, err = strconv.ParseBool(configMap["ENABLE_RUNE"])
-		if err != nil {
-			panic(err)
-		}
-		config.EnableItem, err = strconv.ParseBool(configMap["ENABLE_ITEM"])
-		if err != nil {
-			panic(err)
-		}
-		config.EnableSpell, err = strconv.ParseBool(configMap["ENABLE_SPELL"])
-		if err != nil {
-			panic(err)
-		}
-		config.DFlash, err = strconv.ParseBool(configMap["LEFT_SPELL_IS_FLASH"])
-		if err != nil {
-			panic(err)
-		}
-		config.Interval, err = strconv.ParseFloat(configMap["INTERVAL"], 64)
+		jsonConf, _ := ioutil.ReadFile("config.json")
+		err := json.Unmarshal(jsonConf, &config)
 		if err != nil {
 			panic(err)
 		}
