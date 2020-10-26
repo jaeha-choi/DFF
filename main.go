@@ -20,7 +20,7 @@ import (
 )
 
 const ProjectName string = "DFF!"
-const Version string = "v0.4"
+const Version string = "v0.4.1"
 
 var cli *http.Client
 var config Config
@@ -858,7 +858,7 @@ func setSpells(doc *soup.Root) {
 	if config.DFlash && spellKeyList[1] == 4 {
 		spellKeyList[1] = spellKeyList[0]
 		spellKeyList[0] = 4
-	} else if !config.Debug && spellKeyList[0] == 4 {
+	} else if !config.DFlash && spellKeyList[0] == 4 {
 		spellKeyList[0] = spellKeyList[1]
 		spellKeyList[1] = 4
 	}
