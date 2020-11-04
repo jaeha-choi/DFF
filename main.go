@@ -11,6 +11,7 @@ import (
 	"github.com/anaskhan96/soup"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"strconv"
@@ -20,7 +21,7 @@ import (
 )
 
 const ProjectName string = "DFF!"
-const Version string = "v0.4.1"
+const Version string = "v0.5.0"
 
 var cli *http.Client
 var config Config
@@ -194,6 +195,11 @@ type ItemPage struct {
 	AccountID int64     `json:"accountId"`
 	ItemSets  []ItemSet `json:"itemSets"`
 	Timestamp int64     `json:"timestamp"`
+}
+
+type RuneNamePage struct {
+	Name string
+	Page RunePage
 }
 
 type RunePage struct {
@@ -499,7 +505,8 @@ func requestApi(command *string, loopFlag bool) io.ReadCloser {
 	}
 
 	if err != nil {
-		panic(err)
+		log.Print("API no longer available:", err)
+		os.Exit(1)
 	}
 
 	//for err != nil || resp.StatusCode != 200 {
@@ -590,7 +597,8 @@ func getQueueId() (int, bool) {
 	var queueInfo QueueInfo
 	err := json.NewDecoder(requestApi(&command, false)).Decode(&queueInfo)
 	if err != nil {
-		panic(err)
+		log.Print("API no longer available:", err)
+		os.Exit(1)
 	}
 
 	return queueInfo.CurrentLobbyStatus.QueueID, queueInfo.CurrentLobbyStatus.IsCustom
@@ -612,7 +620,7 @@ func deleteRunePage(runePageId int) bool {
 	}
 
 	if resp.StatusCode == 204 {
-		fmt.Println("Old AutoRune page deleted")
+		fmt.Println("Old DFF page deleted")
 		return true
 	}
 	return false
@@ -892,93 +900,14 @@ func setSpells(doc *soup.Root) {
 	}
 }
 
-func setRunes(doc *soup.Root, gameType *string) {
-	if !config.EnableRune {
-		return
-	}
-	// Delete "AutoRune" page
+func setRuneHelper(page RunePage) {
+	delRunes()
+
 	command := "/lol-perks/v1/pages"
-	var runePages RunePages
-	err := json.NewDecoder(requestApi(&command, false)).Decode(&runePages)
-
-	if err != nil {
-		panic(err)
-	}
-
-	//fmt.Println("Total Rune pages:", len(runePages))
-	for _, page := range runePages {
-		if strings.HasPrefix(page.Name, "AutoRune") {
-			deleteRunePage(page.ID)
-		}
-	}
-
-	// Could be converted to FindAll
-	links := (*doc).Find("div", "class", "perk-page-wrap")
-
-	//links := (*doc).FindAll("div", "class", "perk-page-wrap")
-	//for _, link := range links{
-	//	do work here
-	//}
-
-	// Category
-	imgs := links.FindAll("div", "class", "perk-page__item--mark")
-
-	runeCategoryList := make([]int, len(imgs))
-
-	if len(imgs) != 2 {
-		panic("Rune category updated?")
-	}
-
-	for i, img := range imgs {
-		str := img.Find("img").Attrs()["src"]
-		str = str[strings.LastIndex(str, "/")+1 : strings.Index(str, ".png")]
-		runeCategoryList[i], _ = strconv.Atoi(str)
-	}
-
-	// Runes
-	imgs = links.FindAll("div", "class", "perk-page__item--active")
-	// Fragments
-	fragImgs := links.FindAll("div", "class", "fragment__row")
-
-	runeList := make([]int, len(imgs)+len(fragImgs))
-
-	if len(runeList) != 9 {
-		panic("Runes updated?")
-	}
-
-	for i, img := range imgs {
-		str := img.Find("img").Attrs()["src"]
-		str = str[strings.LastIndex(str, "/")+1 : strings.Index(str, ".png")]
-		runeList[i], _ = strconv.Atoi(str)
-	}
-
-	for i, img := range fragImgs {
-		str := img.Find("img", "class", "active").Attrs()["src"]
-		str = str[strings.LastIndex(str, "/")+1 : strings.Index(str, ".png")]
-		runeList[len(imgs)+i], _ = strconv.Atoi(str)
-	}
-
-	newRune := RunePage{
-		AutoModifiedSelections: make([]interface{}, 0),
-		Current:                true,
-		ID:                     0,
-		IsActive:               true,
-		IsDeletable:            true,
-		IsEditable:             true,
-		IsValid:                true,
-		LastModified:           0,
-		Name:                   "AutoRune " + (*gameType),
-		Order:                  0,
-		PrimaryStyleID:         runeCategoryList[0],
-		SelectedPerkIds:        runeList,
-		SubStyleID:             runeCategoryList[1],
-	}
-
-	command = "/lol-perks/v1/pages"
 
 	//j, _ := json.Marshal(newRune)
 	b := new(bytes.Buffer)
-	err = json.NewEncoder(b).Encode(newRune)
+	err := json.NewEncoder(b).Encode(page)
 
 	if err != nil {
 		panic(err)
@@ -1004,6 +933,113 @@ func setRunes(doc *soup.Root, gameType *string) {
 	}
 }
 
+func delRunes() {
+	// Delete "DFF" page
+	command := "/lol-perks/v1/pages"
+	var runePages RunePages
+	err := json.NewDecoder(requestApi(&command, false)).Decode(&runePages)
+
+	if err != nil {
+		panic(err)
+	}
+
+	//fmt.Println("Total Rune pages:", len(runePages))
+	for _, page := range runePages {
+		//fmt.Println(page.Name)
+		if strings.HasPrefix(page.Name, "DFF") {
+			deleteRunePage(page.ID)
+		}
+	}
+}
+
+func setRunes(doc *soup.Root, gameType *string) []RuneNamePage {
+	if !config.EnableRune {
+		return nil
+	}
+
+	delRunes()
+
+	runeNames := (*doc).FindAll("div", "class", "champion-stats-summary-rune__name")
+	runeInfo := make([]RuneNamePage, len(runeNames)*2)
+
+	i := 0
+	for _, runeName := range runeNames {
+		names := strings.Split(runeName.Text(), "+")
+		//fmt.Println(runeName.Text())
+		for x := 0; x < 2; x++ {
+			runeInfo[i] = RuneNamePage{
+				Name: string([]rune(strings.TrimSpace(names[0]))[0]) + "+" + string([]rune(strings.TrimSpace(names[1]))[0]) + " (" + strconv.Itoa(x+1) + ")",
+			}
+			i++
+			//fmt.Println(runeInfo[x].Name)
+		}
+	}
+	// Could be converted to FindAll
+	//links := (*doc).Find("div", "class", "perk-page-wrap")
+
+	links := (*doc).FindAll("div", "class", "perk-page-wrap")
+	for x, link := range links {
+		//do work here
+		// Category
+		imgs := link.FindAll("div", "class", "perk-page__item--mark")
+
+		runeCategoryList := make([]int, len(imgs))
+
+		if len(imgs) != 2 {
+			panic("Rune category updated?")
+		}
+
+		for i, img := range imgs {
+			str := img.Find("img").Attrs()["src"]
+			str = str[strings.LastIndex(str, "/")+1 : strings.Index(str, ".png")]
+			runeCategoryList[i], _ = strconv.Atoi(str)
+		}
+
+		// Runes
+		imgs = link.FindAll("div", "class", "perk-page__item--active")
+		// Fragments
+		fragImgs := link.FindAll("div", "class", "fragment__row")
+
+		runeList := make([]int, len(imgs)+len(fragImgs))
+
+		if len(runeList) != 9 {
+			panic("Runes updated?")
+		}
+
+		for i, img := range imgs {
+			str := img.Find("img").Attrs()["src"]
+			str = str[strings.LastIndex(str, "/")+1 : strings.Index(str, ".png")]
+			runeList[i], _ = strconv.Atoi(str)
+		}
+
+		for i, img := range fragImgs {
+			str := img.Find("img", "class", "active").Attrs()["src"]
+			str = str[strings.LastIndex(str, "/")+1 : strings.Index(str, ".png")]
+			runeList[len(imgs)+i], _ = strconv.Atoi(str)
+		}
+
+		runeInfo[x].Page = RunePage{
+			AutoModifiedSelections: make([]interface{}, 0),
+			Current:                true,
+			ID:                     0,
+			IsActive:               true,
+			IsDeletable:            true,
+			IsEditable:             true,
+			IsValid:                true,
+			LastModified:           0,
+			Name:                   "DFF! " + runeInfo[x].Name + " " + (*gameType),
+			Order:                  0,
+			PrimaryStyleID:         runeCategoryList[0],
+			SelectedPerkIds:        runeList,
+			SubStyleID:             runeCategoryList[1],
+		}
+	}
+
+	setRuneHelper(runeInfo[0].Page)
+
+	return runeInfo
+}
+
 func downloadFile(url string) {
 	fileName := strings.Split(url, "/")
 	out, err := os.Create("./data/" + fileName[len(fileName)-1])
@@ -1025,11 +1061,12 @@ func downloadFile(url string) {
 	fmt.Println(fileName[len(fileName)-1] + " downloaded.")
 }
 
-func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widget.Label) [][4]string {
+func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widget.Label) ([][4]string, []RuneNamePage) {
 	command := "/lol-champions/v1/inventories/" + strconv.Itoa(sumId) + "/champions/" + strconv.Itoa(champId)
 	var data Champion
 	var gameType, url string
 	var posUrlList [][4]string = nil
+	var runeNamePages []RuneNamePage = nil
 
 	err := json.NewDecoder(requestApi(&command, false)).Decode(&data)
 
@@ -1042,7 +1079,7 @@ func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widg
 	if queueId == 900 {
 		gameType = "URF"
 		fmt.Println("ULTRA RAPID FIRE MODE IS ON!!!")
-		url = "https://na.op.gg/urf/" + data.Alias + "/statistics"
+		url = "https://op.gg/urf/" + data.Alias + "/statistics"
 		resp, err := soup.Get(url)
 		if err != nil {
 			panic(err)
@@ -1050,13 +1087,13 @@ func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widg
 
 		doc := soup.HTMLParse(resp)
 
-		setRunes(&doc, &gameType)
+		runeNamePages = setRunes(&doc, &gameType)
 		setItems(&doc, accId, sumId, champId, &gameType)
 		setSpells(&doc)
 
 	} else {
 		// Can add region here
-		url = "https://na.op.gg/champion/" + data.Alias
+		url = "https://op.gg/champion/" + data.Alias
 		resp, err := soup.Get(url)
 		if err != nil {
 			panic(err)
@@ -1064,7 +1101,7 @@ func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widg
 
 		doc := soup.HTMLParse(resp)
 
-		setRunes(&doc, &gameType)
+		runeNamePages = setRunes(&doc, &gameType)
 		setItems(&doc, accId, sumId, champId, &gameType)
 		setSpells(&doc)
 
@@ -1077,7 +1114,7 @@ func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widg
 		posUrlList = make([][4]string, len(positions))
 
 		for i, pos := range positions {
-			link := "https://na.op.gg" + pos.Find("a").Attrs()["href"]
+			link := "https://op.gg" + pos.Find("a").Attrs()["href"]
 			role := pos.Find("span", "class", "champion-stats-header__position__role").Text()
 			rate := pos.Find("span", "class", "champion-stats-header__position__rate").Text()
 
@@ -1091,7 +1128,7 @@ func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widg
 		lastRole = posUrlList[0][0]
 
 	}
-	return posUrlList
+	return posUrlList, runeNamePages
 }
 
 func getChampId(sumId int) int {
@@ -1206,7 +1243,7 @@ func checkFiles() {
 	}
 }
 
-func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait *sync.WaitGroup) {
+func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait *sync.WaitGroup, runeSelect *widget.Select) {
 	defer wait.Done()
 	status.SetText("Starting...")
 	// Read lockfile
@@ -1252,8 +1289,26 @@ func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait 
 
 		if champId != 0 && prevChampId != champId {
 			status.SetText("Setting...")
-			result := getRunes(accId, sumId, champId, queueId, champLabel)
+			result, runeNamePages := getRunes(accId, sumId, champId, queueId, champLabel)
 			status.SetText("Updated...")
+
+			if len(runeNamePages) > 0 {
+				options := make([]string, len(runeNamePages))
+				for x, elem := range runeNamePages {
+					options[x] = elem.Name
+				}
+				runeSelect.Options = options
+				runeSelect.Selected = options[0]
+				runeSelect.OnChanged = func(s string) {
+					for _, elem := range runeNamePages {
+						if s == elem.Name {
+							setRuneHelper(elem.Page)
+						}
+					}
+				}
+				runeSelect.Refresh()
+			}
+
 			if len(result) > 0 {
 				options := make([]string, len(result))
 
@@ -1274,7 +1329,25 @@ func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait 
 									panic(err)
 								}
 								doc := soup.HTMLParse(resp)
-								setRunes(&doc, &(res[3]))
+								runeNamePages := setRunes(&doc, &(res[3]))
+
+								if len(runeNamePages) > 0 {
+									options := make([]string, len(runeNamePages))
+									for x, elem := range runeNamePages {
+										options[x] = elem.Name
+									}
+									runeSelect.Options = options
+									runeSelect.Selected = options[0]
+									runeSelect.OnChanged = func(s string) {
+										for _, elem := range runeNamePages {
+											if s == elem.Name {
+												setRuneHelper(elem.Page)
+											}
+										}
+									}
+									runeSelect.Refresh()
+								}
+
 								setItems(&doc, accId, sumId, champId, &(res[3]))
 								setSpells(&doc)
 								lastRole = strings.TrimSpace(res[0])
@@ -1283,6 +1356,9 @@ func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait 
 						}
 					}
 				}
+				p.Refresh()
+			} else {
+				p.PlaceHolder = "No alternative role available."
 				p.Refresh()
 			}
 			prevChampId = champId
@@ -1305,10 +1381,10 @@ func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait 
 	}
 }
 
-func runLoop(status *widget.Label, roleSelect *widget.Select, selectedChamp *widget.Label) {
+func runLoop(status *widget.Label, roleSelect *widget.Select, selectedChamp *widget.Label, runeSelect *widget.Select) {
 	var wait sync.WaitGroup
 	for {
-		go run(status, roleSelect, selectedChamp, &wait)
+		go run(status, roleSelect, selectedChamp, &wait, runeSelect)
 		wait.Add(1)
 		wait.Wait()
 	}
@@ -1326,6 +1402,10 @@ func main() {
 
 	a := app.New()
 	w := a.NewWindow(ProjectName + " " + Version)
+
+	w.SetOnClosed(func() {
+		os.Exit(0)
+	})
 
 	// TODO: add write config, debug flag
 	// TODO: add check if in game
@@ -1360,6 +1440,9 @@ func main() {
 	roleSelect := widget.NewSelect(nil, nil)
 	roleSelect.PlaceHolder = "No champion selected"
 
+	runeSelect := widget.NewSelect(nil, nil)
+	runeSelect.PlaceHolder = "No rune selected"
+
 	enableSpellCheck := widget.NewCheck("", func(b bool) {
 		config.EnableSpell = b
 	})
@@ -1375,7 +1458,7 @@ func main() {
 	})
 	enableDebugging.SetChecked(config.Debug)
 
-	go runLoop(status, roleSelect, selectedChamp)
+	go runLoop(status, roleSelect, selectedChamp, runeSelect)
 
 	checkUpdateButton := widget.NewButton("Check Update", func() {
 		req, err := http.Get("https://api.github.com/repos/jaeha-choi/DFF/releases/latest")
@@ -1452,7 +1535,8 @@ func main() {
 					widget.NewLabel("Polling interval"),
 					sl,
 				)),
-			roleSelect))
+			roleSelect,
+			runeSelect))
 
 	//output))
 	w.SetFixedSize(true)
