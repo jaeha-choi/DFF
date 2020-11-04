@@ -21,7 +21,7 @@ import (
 )
 
 const ProjectName string = "DFF!"
-const Version string = "v0.5.0"
+const Version string = "v0.5.1"
 
 var cli *http.Client
 var config Config
@@ -163,6 +163,7 @@ type Config struct {
 	EnableItem  bool    `json:"enable_item"`
 	EnableSpell bool    `json:"enable_spell"`
 	DFlash      bool    `json:"d_flash"`
+	Language    string  `json:"language"`
 }
 
 type Item struct {
@@ -946,7 +947,7 @@ func delRunes() {
 	//fmt.Println("Total Rune pages:", len(runePages))
 	for _, page := range runePages {
 		//fmt.Println(page.Name)
-		if strings.HasPrefix(page.Name, "DFF") {
+		if strings.HasPrefix(page.Name, ProjectName) {
 			deleteRunePage(page.ID)
 		}
 	}
@@ -1027,7 +1028,7 @@ func setRunes(doc *soup.Root, gameType *string) []RuneNamePage {
 			IsEditable:             true,
 			IsValid:                true,
 			LastModified:           0,
-			Name:                   "DFF! " + runeInfo[x].Name + " " + (*gameType),
+			Name:                   ProjectName + " " + runeInfo[x].Name + " " + (*gameType),
 			Order:                  0,
 			PrimaryStyleID:         runeCategoryList[0],
 			SelectedPerkIds:        runeList,
@@ -1080,6 +1081,7 @@ func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widg
 		gameType = "URF"
 		fmt.Println("ULTRA RAPID FIRE MODE IS ON!!!")
 		url = "https://op.gg/urf/" + data.Alias + "/statistics"
+		soup.Cookie("customLocale", config.Language)
 		resp, err := soup.Get(url)
 		if err != nil {
 			panic(err)
@@ -1094,6 +1096,7 @@ func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widg
 	} else {
 		// Can add region here
 		url = "https://op.gg/champion/" + data.Alias
+		soup.Cookie("customLocale", config.Language)
 		resp, err := soup.Get(url)
 		if err != nil {
 			panic(err)
@@ -1171,6 +1174,7 @@ func readConfig() {
 		EnableItem:  true,
 		EnableSpell: true,
 		DFlash:      true,
+		Language:    "en_US",
 	}
 
 	if os.IsNotExist(err) {
@@ -1404,6 +1408,7 @@ func main() {
 	w := a.NewWindow(ProjectName + " " + Version)
 
 	w.SetOnClosed(func() {
+		writeConfig()
 		os.Exit(0)
 	})
 
@@ -1541,5 +1546,4 @@ func main() {
 	//output))
 	w.SetFixedSize(true)
 	w.ShowAndRun()
-	writeConfig()
 }
