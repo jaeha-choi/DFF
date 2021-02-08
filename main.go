@@ -1526,14 +1526,28 @@ func main() {
 			}
 
 			if update.TagName != Version {
-				name := strings.Split(update.Assets[0].BrowserDownloadURL, "/")
+				downloadUrl := ""
+				for _, asset := range update.Assets {
+					if asset.Name == "DFF_windows.zip" {
+						downloadUrl = asset.BrowserDownloadURL
+					}
+				}
+
+				if downloadUrl == "" {
+					popup := widget.NewLabel("Update Error. File not found.")
+					widget.ShowPopUpAtPosition(popup,
+						w.Canvas(), fyne.NewPos(50, 50))
+					time.Sleep(3 * time.Second)
+				}
+
+				name := strings.Split(downloadUrl, "/")
 				out, err := os.Create(name[len(name)-1])
 				if err != nil {
 					panic(err)
 				}
 				defer out.Close()
 
-				resp, err := http.Get(update.Assets[0].BrowserDownloadURL)
+				resp, err := http.Get(downloadUrl)
 				if err != nil {
 					panic(err)
 				}
