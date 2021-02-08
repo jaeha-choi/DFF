@@ -1340,8 +1340,8 @@ func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait 
 				options := make([]string, len(runeNamePages))
 				for x, elem := range runeNamePages {
 					runeDetail := runeDetails[x]
-					//options[x] = elem.Name + " PR:" + runeDetail[0] + " WR:" + runeDetail[1] + " Sample:" + runeDetail[2]
-					options[x] = elem.Name + "  PR:" + runeDetail[0] + " WR:" + runeDetail[1]
+					options[x] = elem.Name + " PR:" + runeDetail[0] + " WR:" + runeDetail[1] + " Sample:" + runeDetail[2]
+					//options[x] = elem.Name + "  PR:" + runeDetail[0] + " WR:" + runeDetail[1]
 				}
 				runeSelect.Options = options
 				runeSelect.Selected = options[0]
@@ -1382,8 +1382,8 @@ func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait 
 									options := make([]string, len(runeNamePages))
 									for x, elem := range runeNamePages {
 										runeDetail := runeDetails[x]
-										//options[x] = elem.Name + " PR:" + runeDetail[0] + " WR:" + runeDetail[1] + " Sample:" + runeDetail[2]
-										options[x] = elem.Name + "  PR:" + runeDetail[0] + " WR:" + runeDetail[1]
+										options[x] = elem.Name + " PR:" + runeDetail[0] + " WR:" + runeDetail[1] + " Sample:" + runeDetail[2]
+										//options[x] = elem.Name + "  PR:" + runeDetail[0] + " WR:" + runeDetail[1]
 									}
 									runeSelect.Options = options
 									runeSelect.Selected = options[0]
