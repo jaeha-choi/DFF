@@ -21,7 +21,7 @@ import (
 )
 
 const ProjectName string = "DFF!"
-const Version string = "v0.5.1"
+const Version string = "v0.5.2"
 
 var cli *http.Client
 var config Config
@@ -196,6 +196,10 @@ type ItemPage struct {
 	AccountID int64     `json:"accountId"`
 	ItemSets  []ItemSet `json:"itemSets"`
 	Timestamp int64     `json:"timestamp"`
+}
+
+type RunePageCount struct {
+	OwnedPageCount int `json:"ownedPageCount"`
 }
 
 type RuneNamePage struct {
@@ -902,7 +906,7 @@ func setSpells(doc *soup.Root) {
 }
 
 func setRuneHelper(page RunePage) {
-	delRunes()
+	//delRunes()
 
 	command := "/lol-perks/v1/pages"
 
@@ -935,11 +939,19 @@ func setRuneHelper(page RunePage) {
 }
 
 func delRunes() {
+	var runePages RunePages
+	var runePageCnt RunePageCount
+	deleted := false
+
 	// Delete "DFF" page
 	command := "/lol-perks/v1/pages"
-	var runePages RunePages
 	err := json.NewDecoder(requestApi(&command, false)).Decode(&runePages)
+	if err != nil {
+		panic(err)
+	}
 
+	command = "/lol-perks/v1/inventory"
+	err = json.NewDecoder(requestApi(&command, false)).Decode(&runePageCnt)
 	if err != nil {
 		panic(err)
 	}
@@ -949,16 +961,37 @@ func delRunes() {
 		//fmt.Println(page.Name)
 		if strings.HasPrefix(page.Name, ProjectName) {
 			deleteRunePage(page.ID)
+			deleted = true
 		}
+	}
+	if len(runePages)+5 >= runePageCnt.OwnedPageCount && !deleted {
+		// Delete the first rune page if all pages are used
+		deleteRunePage(runePages[0].ID)
 	}
 }
 
-func setRunes(doc *soup.Root, gameType *string) []RuneNamePage {
+func setRunes(doc *soup.Root, gameType *string) ([]RuneNamePage, [][]string) {
 	if !config.EnableRune {
-		return nil
+		return nil, nil
 	}
 
 	delRunes()
+
+	runeDetailsDoc := (*doc).FindAll("span", "class", "pick-ratio__text")
+	runeDetails := make([][]string, len(runeDetailsDoc)*2)
+
+	var pr, wr, sample string
+	for idx, runeDetailDoc := range runeDetailsDoc {
+		next := runeDetailDoc.FindNextElementSibling()
+		pr = next.Text()
+		next = next.FindNextElementSibling()
+		sample = next.Text()
+		next = next.FindNextElementSibling()
+		next = next.FindNextElementSibling()
+		wr = next.Text()
+		runeDetail := []string{pr, wr, sample}
+		runeDetails[idx] = runeDetail
+	}
 
 	runeNames := (*doc).FindAll("div", "class", "champion-stats-summary-rune__name")
 	runeInfo := make([]RuneNamePage, len(runeNames)*2)
@@ -1038,7 +1071,7 @@ func setRunes(doc *soup.Root, gameType *string) []RuneNamePage {
 
 	setRuneHelper(runeInfo[0].Page)
 
-	return runeInfo
+	return runeInfo, runeDetails
 }
 
 func downloadFile(url string) {
@@ -1062,12 +1095,13 @@ func downloadFile(url string) {
 	fmt.Println(fileName[len(fileName)-1] + " downloaded.")
 }
 
-func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widget.Label) ([][4]string, []RuneNamePage) {
+func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widget.Label) ([][4]string, []RuneNamePage, [][]string) {
 	command := "/lol-champions/v1/inventories/" + strconv.Itoa(sumId) + "/champions/" + strconv.Itoa(champId)
 	var data Champion
 	var gameType, url string
 	var posUrlList [][4]string = nil
 	var runeNamePages []RuneNamePage = nil
+	var runeDetails [][]string
 
 	err := json.NewDecoder(requestApi(&command, false)).Decode(&data)
 
@@ -1089,7 +1123,7 @@ func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widg
 
 		doc := soup.HTMLParse(resp)
 
-		runeNamePages = setRunes(&doc, &gameType)
+		runeNamePages, runeDetails = setRunes(&doc, &gameType)
 		setItems(&doc, accId, sumId, champId, &gameType)
 		setSpells(&doc)
 
@@ -1104,7 +1138,7 @@ func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widg
 
 		doc := soup.HTMLParse(resp)
 
-		runeNamePages = setRunes(&doc, &gameType)
+		runeNamePages, runeDetails = setRunes(&doc, &gameType)
 		setItems(&doc, accId, sumId, champId, &gameType)
 		setSpells(&doc)
 
@@ -1131,7 +1165,7 @@ func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widg
 		lastRole = posUrlList[0][0]
 
 	}
-	return posUrlList, runeNamePages
+	return posUrlList, runeNamePages, runeDetails
 }
 
 func getChampId(sumId int) int {
@@ -1287,19 +1321,27 @@ func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait 
 		time.Sleep(time.Duration(config.Interval) * time.Second)
 	}
 
+	// For debug purpose; replace command to test the api
+	//command := "/lol-perks/v1/show-auto-modified-pages-notification"
+	//resp := requestApi(&command, false)
+	//body, _ := ioutil.ReadAll(resp)
+	//fmt.Println(string(body))
+
 	// Loop until champion select phase is over
 	for isInChampSelect() {
 		champId := getChampId(sumId)
 
 		if champId != 0 && prevChampId != champId {
 			status.SetText("Setting...")
-			result, runeNamePages := getRunes(accId, sumId, champId, queueId, champLabel)
+			result, runeNamePages, runeDetails := getRunes(accId, sumId, champId, queueId, champLabel)
 			status.SetText("Updated...")
 
 			if len(runeNamePages) > 0 {
 				options := make([]string, len(runeNamePages))
 				for x, elem := range runeNamePages {
-					options[x] = elem.Name
+					runeDetail := runeDetails[x]
+					//options[x] = elem.Name + " PR:" + runeDetail[0] + " WR:" + runeDetail[1] + " Sample:" + runeDetail[2]
+					options[x] = elem.Name + "  PR:" + runeDetail[0] + " WR:" + runeDetail[1]
 				}
 				runeSelect.Options = options
 				runeSelect.Selected = options[0]
@@ -1333,12 +1375,14 @@ func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait 
 									panic(err)
 								}
 								doc := soup.HTMLParse(resp)
-								runeNamePages := setRunes(&doc, &(res[3]))
+								runeNamePages, runeDetails := setRunes(&doc, &(res[3]))
 
 								if len(runeNamePages) > 0 {
 									options := make([]string, len(runeNamePages))
 									for x, elem := range runeNamePages {
-										options[x] = elem.Name
+										runeDetail := runeDetails[x]
+										//options[x] = elem.Name + " PR:" + runeDetail[0] + " WR:" + runeDetail[1] + " Sample:" + runeDetail[2]
+										options[x] = elem.Name + "  PR:" + runeDetail[0] + " WR:" + runeDetail[1]
 									}
 									runeSelect.Options = options
 									runeSelect.Selected = options[0]
