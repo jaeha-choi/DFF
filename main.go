@@ -906,7 +906,7 @@ func setSpells(doc *soup.Root) {
 }
 
 func setRuneHelper(page RunePage) {
-	//delRunes()
+	delRunes()
 
 	command := "/lol-perks/v1/pages"
 
@@ -975,7 +975,7 @@ func setRunes(doc *soup.Root, gameType *string) ([]RuneNamePage, [][]string) {
 		return nil, nil
 	}
 
-	delRunes()
+	//delRunes()
 
 	runeDetailsDoc := (*doc).FindAll("span", "class", "pick-ratio__text")
 	runeDetails := make([][]string, len(runeDetailsDoc)*2)
@@ -1347,7 +1347,8 @@ func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait 
 				runeSelect.Selected = options[0]
 				runeSelect.OnChanged = func(s string) {
 					for _, elem := range runeNamePages {
-						if s == elem.Name {
+						name := strings.Fields(s)
+						if name[0]+" "+name[1] == elem.Name {
 							setRuneHelper(elem.Page)
 						}
 					}
@@ -1388,7 +1389,8 @@ func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait 
 									runeSelect.Selected = options[0]
 									runeSelect.OnChanged = func(s string) {
 										for _, elem := range runeNamePages {
-											if s == elem.Name {
+											name := strings.Fields(s)
+											if name[0]+" "+name[1] == elem.Name {
 												setRuneHelper(elem.Page)
 											}
 										}
