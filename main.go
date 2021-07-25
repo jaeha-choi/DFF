@@ -5,9 +5,10 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"fyne.io/fyne"
-	"fyne.io/fyne/app"
-	"fyne.io/fyne/widget"
+	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/app"
+	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/widget"
 	"github.com/anaskhan96/soup"
 	"io"
 	"io/ioutil"
@@ -21,7 +22,7 @@ import (
 )
 
 const ProjectName string = "DFF!"
-const Version string = "v0.5.2"
+const Version string = "v0.5.3"
 
 var cli *http.Client
 var config Config
@@ -1127,6 +1128,21 @@ func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widg
 		setItems(&doc, accId, sumId, champId, &gameType)
 		setSpells(&doc)
 
+	} else if queueId == 450 {
+		gameType = "ARAM"
+		fmt.Println("ARAM MODE IS ON!!!")
+		url = "https://op.gg/aram/" + data.Alias + "/statistics"
+		soup.Cookie("customLocale", config.Language)
+		resp, err := soup.Get(url)
+		if err != nil {
+			panic(err)
+		}
+
+		doc := soup.HTMLParse(resp)
+
+		runeNamePages, runeDetails = setRunes(&doc, &gameType)
+		setItems(&doc, accId, sumId, champId, &gameType)
+		setSpells(&doc)
 	} else {
 		// Can add region here
 		url = "https://op.gg/champion/" + data.Alias
@@ -1561,7 +1577,7 @@ func main() {
 				}
 
 				fmt.Println(name[len(name)-1] + " downloaded.")
-				popup := widget.NewVBox(widget.NewLabel("Version "+update.TagName+" downloaded."),
+				popup := container.NewVBox(widget.NewLabel("Version "+update.TagName+" downloaded."),
 					widget.NewLabel("Program will now exit."))
 				widget.ShowPopUpAtPosition(popup,
 					w.Canvas(), fyne.NewPos(50, 50))
@@ -1582,21 +1598,21 @@ func main() {
 	///riotclient/get_region_locale
 
 	w.SetContent(
-		widget.NewVBox(
-			widget.NewHBox(
-				widget.NewVBox(
+		container.NewVBox(
+			container.NewHBox(
+				container.NewVBox(
 					widget.NewLabel(ProjectName+" "+Version),
 					widget.NewLabel("Program Status:"),
 					status,
-					widget.NewHBox(widget.NewLabel("Current Champion:")),
+					container.NewHBox(widget.NewLabel("Current Champion:")),
 					selectedChamp),
-				widget.NewVBox(
+				container.NewVBox(
 					checkUpdateButton,
-					widget.NewHBox(widget.NewLabel("Debug"), enableDebugging),
-					widget.NewHBox(widget.NewLabel("Auto runes"), enableRunesCheck),
-					widget.NewHBox(widget.NewLabel("Auto items"), enableItemsCheck),
-					widget.NewHBox(widget.NewLabel("Auto spells"), enableSpellCheck),
-					widget.NewHBox(widget.NewLabel("Left Flash"), enableDFlash),
+					container.NewHBox(widget.NewLabel("Debug"), enableDebugging),
+					container.NewHBox(widget.NewLabel("Auto runes"), enableRunesCheck),
+					container.NewHBox(widget.NewLabel("Auto items"), enableItemsCheck),
+					container.NewHBox(widget.NewLabel("Auto spells"), enableSpellCheck),
+					container.NewHBox(widget.NewLabel("Left Flash"), enableDFlash),
 					widget.NewLabel("Polling interval"),
 					sl,
 				)),
