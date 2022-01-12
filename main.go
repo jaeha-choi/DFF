@@ -22,7 +22,7 @@ import (
 )
 
 const ProjectName string = "DFF!"
-const Version string = "v0.5.3"
+const Version string = "v0.5.4"
 
 var cli *http.Client
 var config Config
@@ -1246,7 +1246,7 @@ func readConfig() {
 }
 
 func checkFiles() {
-	resp, err := http.Get("https://ddragon.leagueoflegends.com/api/versions.json")
+	resp, err := http.Get("http://ddragon.leagueoflegends.com/api/versions.json")
 	if err != nil {
 		panic(err)
 	}
