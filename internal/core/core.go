@@ -1,4 +1,4 @@
-package main
+package core
 
 import (
 	"bytes"
@@ -6,137 +6,40 @@ import (
 	"encoding/json"
 	"fmt"
 	"fyne.io/fyne/v2"
-	"fyne.io/fyne/v2/app"
-	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/widget"
 	"github.com/anaskhan96/soup"
+	"github.com/jaeha-choi/DFF/pkg/log"
 	"io"
+	"io/fs"
 	"io/ioutil"
-	"log"
 	"net/http"
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 )
 
 const ProjectName string = "DFF!"
 const Version string = "v0.5.4"
+const IssueUrl string = "https://github.com/jaeha-choi/DFF/issues"
 
-var cli *http.Client
-var config Config
+type DFFClient struct {
+	apiPort     string
+	apiPass     string
+	apiProtocol string
+	lastRole    string
+	Log         *log.Logger
+	gameClient  *http.Client
+	account     *AccountInfo
 
-var values []string
-var lastRole = ""
-
-//var interval = 3
-//var debug = false
-
-//type Spell struct {
-//	ID           string `json:"id"`
-//	Name         string `json:"name"`
-//	Description  string `json:"description"`
-//	Tooltip      string `json:"tooltip"`
-//	Maxrank      int    `json:"maxrank"`
-//	Cooldown     []int  `json:"cooldown"`
-//	CooldownBurn string `json:"cooldownBurn"`
-//	Cost         []int  `json:"cost"`
-//	CostBurn     string `json:"costBurn"`
-//	Datavalues   struct {
-//	} `json:"datavalues"`
-//	Effect        []interface{} `json:"effect"`
-//	EffectBurn    []interface{} `json:"effectBurn"`
-//	Vars          []interface{} `json:"vars"`
-//	Key           string        `json:"key"`
-//	SummonerLevel int           `json:"summonerLevel"`
-//	Modes         []string      `json:"modes"`
-//	CostType      string        `json:"costType"`
-//	Maxammo       string        `json:"maxammo"`
-//	Range         []int         `json:"range"`
-//	RangeBurn     string        `json:"rangeBurn"`
-//	Image         struct {
-//		Full   string `json:"full"`
-//		Sprite string `json:"sprite"`
-//		Group  string `json:"group"`
-//		X      int    `json:"x"`
-//		Y      int    `json:"y"`
-//		W      int    `json:"w"`
-//		H      int    `json:"h"`
-//	} `json:"image"`
-//	Resource string `json:"resource"`
-//}
-type GitHubUpdate struct {
-	URL             string `json:"url"`
-	AssetsURL       string `json:"assets_url"`
-	UploadURL       string `json:"upload_url"`
-	HTMLURL         string `json:"html_url"`
-	ID              int    `json:"id"`
-	NodeID          string `json:"node_id"`
-	TagName         string `json:"tag_name"`
-	TargetCommitish string `json:"target_commitish"`
-	Name            string `json:"name"`
-	Draft           bool   `json:"draft"`
-	Author          struct {
-		Login             string `json:"login"`
-		ID                int    `json:"id"`
-		NodeID            string `json:"node_id"`
-		AvatarURL         string `json:"avatar_url"`
-		GravatarID        string `json:"gravatar_id"`
-		URL               string `json:"url"`
-		HTMLURL           string `json:"html_url"`
-		FollowersURL      string `json:"followers_url"`
-		FollowingURL      string `json:"following_url"`
-		GistsURL          string `json:"gists_url"`
-		StarredURL        string `json:"starred_url"`
-		SubscriptionsURL  string `json:"subscriptions_url"`
-		OrganizationsURL  string `json:"organizations_url"`
-		ReposURL          string `json:"repos_url"`
-		EventsURL         string `json:"events_url"`
-		ReceivedEventsURL string `json:"received_events_url"`
-		Type              string `json:"type"`
-		SiteAdmin         bool   `json:"site_admin"`
-	} `json:"author"`
-	Prerelease  bool      `json:"prerelease"`
-	CreatedAt   time.Time `json:"created_at"`
-	PublishedAt time.Time `json:"published_at"`
-	Assets      []struct {
-		URL      string      `json:"url"`
-		ID       int         `json:"id"`
-		NodeID   string      `json:"node_id"`
-		Name     string      `json:"name"`
-		Label    interface{} `json:"label"`
-		Uploader struct {
-			Login             string `json:"login"`
-			ID                int    `json:"id"`
-			NodeID            string `json:"node_id"`
-			AvatarURL         string `json:"avatar_url"`
-			GravatarID        string `json:"gravatar_id"`
-			URL               string `json:"url"`
-			HTMLURL           string `json:"html_url"`
-			FollowersURL      string `json:"followers_url"`
-			FollowingURL      string `json:"following_url"`
-			GistsURL          string `json:"gists_url"`
-			StarredURL        string `json:"starred_url"`
-			SubscriptionsURL  string `json:"subscriptions_url"`
-			OrganizationsURL  string `json:"organizations_url"`
-			ReposURL          string `json:"repos_url"`
-			EventsURL         string `json:"events_url"`
-			ReceivedEventsURL string `json:"received_events_url"`
-			Type              string `json:"type"`
-			SiteAdmin         bool   `json:"site_admin"`
-		} `json:"uploader"`
-		ContentType        string    `json:"content_type"`
-		State              string    `json:"state"`
-		Size               int       `json:"size"`
-		DownloadCount      int       `json:"download_count"`
-		CreatedAt          time.Time `json:"created_at"`
-		UpdatedAt          time.Time `json:"updated_at"`
-		BrowserDownloadURL string    `json:"browser_download_url"`
-	} `json:"assets"`
-	TarballURL string `json:"tarball_url"`
-	ZipballURL string `json:"zipball_url"`
-	Body       string `json:"body"`
+	Debug       bool    `json:"debug"`
+	Interval    float64 `json:"interval"`
+	ClientDir   string  `json:"client_dir"`
+	EnableRune  bool    `json:"enable_rune"`
+	EnableItem  bool    `json:"enable_item"`
+	EnableSpell bool    `json:"enable_spell"`
+	DFlash      bool    `json:"d_flash"`
+	Language    string  `json:"language"`
 }
 
 type SpellFile struct {
@@ -149,22 +52,11 @@ type FileVersion struct {
 	Version string `json:"version"`
 }
 
-type MySelect struct {
+type Spells struct {
 	//SelectedSkinID int32 `json:"selectedSkinId"`
 	Spell1ID int64 `json:"spell1Id"`
 	Spell2ID int64 `json:"spell2Id"`
 	//WardSkinID     int64 `json:"wardSkinId"`
-}
-
-type Config struct {
-	Debug       bool    `json:"debug"`
-	Interval    float64 `json:"interval"`
-	ClientDir   string  `json:"client_dir"`
-	EnableRune  bool    `json:"enable_rune"`
-	EnableItem  bool    `json:"enable_item"`
-	EnableSpell bool    `json:"enable_spell"`
-	DFlash      bool    `json:"d_flash"`
-	Language    string  `json:"language"`
 }
 
 type Item struct {
@@ -469,176 +361,264 @@ type ChampSelect struct {
 	Trades []interface{} `json:"trades"`
 }
 
-func readLock() string {
-	var file *os.File
-	var err error
+// Initialize creates DFFClient structure and initialize files/variables
+func Initialize(outTo io.Writer) (client *DFFClient) {
+	client = createDFFClient(outTo)
 
+	if err := client.readConfig(); err != nil {
+		client.Log.Error(ProjectName + " may not be initialized properly")
+	}
+
+	if err := client.WriteConfig(); err != nil {
+		client.Log.Error("Could not write config file")
+	}
+
+	// Read/Download/Sync mandatory files if necessary
+	if err := client.checkFiles(); err != nil {
+		client.Log.Error("At least one mandatory file is missing")
+	}
+
+	return client
+}
+
+// createDFFClient initializes the DFF client and variables used by it
+func createDFFClient(outTo io.Writer) *DFFClient {
+	return &DFFClient{
+		apiPort:     "",
+		apiPass:     "",
+		apiProtocol: "",
+		lastRole:    "",
+		Log:         log.NewLogger(outTo, log.INFO, ""),
+		gameClient: &http.Client{Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		}},
+		account:     nil,
+		Debug:       false,
+		Interval:    2,
+		ClientDir:   "C:/Riot Games/League of Legends/",
+		EnableRune:  true,
+		EnableItem:  true,
+		EnableSpell: true,
+		DFlash:      true,
+		Language:    "en_US",
+	}
+}
+
+// readConfig reads configuration file if it exist and update variables, or use default config otherwise
+func (client *DFFClient) readConfig() (err error) {
+	if _, err = os.Stat("config.json"); err == nil {
+		var fileBytes []byte
+
+		if fileBytes, err = ioutil.ReadFile("config.json"); err != nil {
+			client.Log.Debug(err)
+			client.Log.Error("Error while reading config.json")
+			return err
+		}
+
+		if err = json.Unmarshal(fileBytes, &client); err != nil {
+			client.Log.Debug(err)
+			client.Log.Error("Error while loading a configuration file")
+			return err
+		}
+
+		if client.Interval < 1 {
+			client.Interval = 1
+		} else if client.Interval > 5 {
+			client.Interval = 5
+		}
+
+		if client.Debug {
+			client.Log.Mode = log.DEBUG
+		} else {
+			client.Log.Mode = log.INFO
+		}
+	} else {
+		client.Log.Debug(err)
+		client.Log.Warning("Cannot open config file. Default settings will be used.")
+	}
+	return err
+}
+
+// WriteConfig writes configuration file
+func (client *DFFClient) WriteConfig() (err error) {
+	var jsonConf []byte
+
+	if jsonConf, err = json.MarshalIndent(client, "", "\t"); err != nil {
+		client.Log.Debug(err)
+		client.Log.Error("Error while encoding client to bytes")
+		return err
+	}
+
+	if err = ioutil.WriteFile("config.json", jsonConf, 0644); err != nil {
+		client.Log.Debug(err)
+		client.Log.Error("Error while writing a configuration file")
+		return err
+	}
+
+	return err
+}
+
+// readLockFile wait for lockfile to be generated and reads "lockfile", which provides a token to access
+// the game client. Returns the content of lockfile as string or err if failed
+func (client *DFFClient) readLockFile() (err error) {
+	var file *os.File
+	// Loop until file is available
 	for {
-		file, err = os.Open(config.ClientDir + "lockfile")
-		if err == nil {
-			//fmt.Println("Lockfile found")
+		if file, err = os.Open(client.ClientDir + "lockfile"); err == nil {
+			client.Log.Debug("lockfile found")
 			break
 		} else {
-			fmt.Println("Waiting for League process to open")
+			client.Log.Debug(err)
+			client.Log.Info("Waiting for League process to open")
 		}
-		time.Sleep(time.Duration(config.Interval) * time.Second)
+		time.Sleep(time.Duration(client.Interval) * time.Second)
 	}
 
 	b, err := ioutil.ReadAll(file)
-
 	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error while reading a lockfile")
+		return err
 	}
 
-	return string(b)
+	// lockfileValues[0] = not used
+	// lockfileValues[1] = not used
+	// lockfileValues[2] = Port
+	// lockfileValues[3] = API auth password (username is always "riot")
+	// lockfileValues[4] = Protocol (https)
+	lockfileValues := strings.Split(string(b), ":")
+
+	//for _, val := range lockfileValues {
+	//	client.Log.Debug(val)
+	//}
+
+	client.apiPort = lockfileValues[2]
+	client.apiPass = lockfileValues[3]
+	client.apiProtocol = lockfileValues[4]
+
+	return err
 }
 
-func requestApi(command *string, loopFlag bool) io.ReadCloser {
-	req, err := http.NewRequest("GET", values[4]+"://127.0.0.1:"+values[2]+(*command), nil)
+// requestApi is a function interface for game client API (GET methods)
+func (client *DFFClient) requestApi(command *string) io.ReadCloser {
+	req, err := http.NewRequest("GET", client.apiProtocol+"://127.0.0.1:"+client.apiPort+(*command), nil)
 	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error encountered while requesting information")
+		return nil
 	}
+	req.SetBasicAuth("riot", client.apiPass)
 
-	req.SetBasicAuth("riot", values[3])
-
-	resp, err := cli.Do(req)
-
-	if loopFlag {
-		for err != nil || resp.StatusCode != 200 {
-			resp, err = cli.Do(req)
-			time.Sleep(time.Duration(config.Interval) * time.Second)
-		}
-	}
-
+	resp, err := client.gameClient.Do(req)
 	if err != nil {
-		log.Print("API no longer available:", err)
-		os.Exit(1)
+		client.Log.Debug(err)
+		client.Log.Error("Error while requesting API")
+		return nil
 	}
-
-	//for err != nil || resp.StatusCode != 200 {
-	//	resp, err = cli.Do(req)
-	//	time.Sleep(time.Duration(interval) * time.Second)
-	//}
-
-	//err = req.Body.Close()
-	//
-	//if err != nil {
-	//	panic(err)
-	//}
 
 	return resp.Body
 }
 
-func isInChampSelect() bool {
+// isInChampSelect returns true if the user is currently in a champion select phase, false otherwise
+func (client *DFFClient) isInChampSelect() (bool, error) {
 	command := "/lol-champ-select/v1/session"
 	var data ChampSelect
 
-	err := json.NewDecoder(requestApi(&command, false)).Decode(&data)
-
+	err := json.NewDecoder(client.requestApi(&command)).Decode(&data)
 	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error while decoding API response")
+		return false, err
 	}
 
-	if float64(data.Timer.AdjustedTimeLeftInPhase) <= config.Interval {
-		return false
-	}
-	return true
-
-	//command := "/lol-champ-select/v1/session"
-	//req, err := http.NewRequest("GET", values[4]+"://127.0.0.1:"+values[2]+command, nil)
-	//
-	//if err != nil {
-	//	panic(err)
-	//}
-	//
-	//req.SetBasicAuth("riot", values[3])
-	//
-	//resp, err := cli.Do(req)
-	//
-	//if err != nil {
-	//	panic(err)
-	//}
-
-	//return resp.StatusCode == 200
+	return float64(data.Timer.AdjustedTimeLeftInPhase) > client.Interval, err
 }
 
-func getAccInfo() (int64, int) {
-	command := "/lol-summoner/v1/current-summoner" // returns login information
+// getAccInfo returns login information
+func (client *DFFClient) getAccInfo() (err error) {
+	command := "/lol-summoner/v1/current-summoner"
 
-	var data AccountInfo
-	err := json.NewDecoder(requestApi(&command, true)).Decode(&data)
-
-	if err != nil {
-		panic(err)
+	// Repeat until API is functional
+	reader := client.requestApi(&command)
+	for reader == nil {
+		reader = client.requestApi(&command)
+		time.Sleep(time.Duration(client.Interval) * time.Second)
 	}
 
-	if config.Debug {
-		fmt.Println("Logged in as...")
-		fmt.Println("Account ID: ", data.AccountID)
-		fmt.Println("Display Name: ", data.DisplayName)
-		fmt.Println("Internal Name: ", data.InternalName)
-		fmt.Println("Player UUID: ", data.Puuid)
-		fmt.Println("Summoner ID: ", data.SummonerID)
+	if err = json.NewDecoder(reader).Decode(&client.account); err != nil {
+		client.Log.Debug(err)
+		client.Log.Error("Error while decoding account information")
+		return err
 	}
-	fmt.Println("Client API connection functional.")
-	return data.AccountID, data.SummonerID
+
+	//client.Log.Debug("Logged in as...")
+	//client.Log.Debug("Account ID: ", client.account.AccountID)
+	//client.Log.Debug("Display Name: ", client.account.DisplayName)
+	//client.Log.Debug("Internal Name: ", client.account.InternalName)
+	//client.Log.Debug("Player UUID: ", client.account.Puuid)
+	//client.Log.Debug("Summoner ID: ", client.account.SummonerID)
+	client.Log.Info("Client API connection functional.")
+
+	return nil
 }
 
-func getUxStatus() bool {
+// checkIsInGame returns true if a user is currently in a game, false otherwise
+func (client *DFFClient) checkIsInGame() (bool, error) {
 	command := "/riotclient/ux-state"
 
-	bodyBytes, err := ioutil.ReadAll(requestApi(&command, false))
+	bodyBytes, err := ioutil.ReadAll(client.requestApi(&command))
 	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error while checking if the user is in a game")
+		return false, err
 	}
-	if string(bodyBytes) == "\"ShowMain\"" {
-		return false
-	} else {
-		return true
-	}
+	return string(bodyBytes) != "\"ShowMain\"", nil
 }
 
-func getQueueId() (int, bool) {
+// getQueueId returns the type of the game (normal, urf, aram, etc)
+func (client *DFFClient) getQueueId() (int, error) {
 	command := "/lol-gameflow/v1/gameflow-metadata/player-status"
 	var queueInfo QueueInfo
-	err := json.NewDecoder(requestApi(&command, false)).Decode(&queueInfo)
-	if err != nil {
-		log.Print("API no longer available:", err)
-		os.Exit(1)
-	}
 
-	return queueInfo.CurrentLobbyStatus.QueueID, queueInfo.CurrentLobbyStatus.IsCustom
+	err := json.NewDecoder(client.requestApi(&command)).Decode(&queueInfo)
+	if err != nil {
+		client.Log.Debug(err)
+		client.Log.Error("Error while getting the queue type")
+		return -1, err
+	}
+	return queueInfo.CurrentLobbyStatus.QueueID, err
 }
 
-func deleteRunePage(runePageId int) bool {
+// deleteRunePageWithId deletes old rune page and return true if deleted, false otherwise
+func (client *DFFClient) deleteRunePageWithId(runePageId int) (bool, error) {
+	command := "/lol-perks/v1/pages/"
 
-	req, err := http.NewRequest("DELETE", values[4]+"://127.0.0.1:"+values[2]+"/lol-perks/v1/pages/"+strconv.Itoa(runePageId), nil)
-
+	req, err := http.NewRequest("DELETE", client.apiProtocol+"://127.0.0.1:"+
+		client.apiPort+command+strconv.Itoa(runePageId), nil)
 	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error while deleting an old DFF rune page")
+		return false, err
 	}
+	req.SetBasicAuth("riot", client.apiPass)
 
-	req.SetBasicAuth("riot", values[3])
-
-	resp, err := cli.Do(req)
+	resp, err := client.gameClient.Do(req)
 	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error while requesting to delete the old DFF rune page")
+		return false, err
 	}
 
-	if resp.StatusCode == 204 {
-		fmt.Println("Old DFF page deleted")
-		return true
-	}
-	return false
+	return resp.StatusCode == http.StatusNoContent, nil
 }
 
-func setItems(doc *soup.Root, accId int64, sumId int, champId int, gameType *string) {
-	if !config.EnableItem {
-		return
+// setItems sets an item page
+func (client *DFFClient) setItems(doc *soup.Root, champId int, gameType *string) (bool, error) {
+	if !client.EnableItem {
+		return false, nil
 	}
 	builds := (*doc).FindAll("tr", "class", "champion-overview__row")
-	blockCnt := len((*doc).FindAll("tr", "class", "champion-overview__row--first"))
-	blockCnt++
+	blockCnt := len((*doc).FindAll("tr", "class", "champion-overview__row--first")) + 1
 
 	blockList := make([]ItemBlock, blockCnt)
 	otherItemSet := make(map[string]bool)
@@ -730,10 +710,8 @@ func setItems(doc *soup.Root, accId int64, sumId int, champId int, gameType *str
 	blockList = append(blockList[:2], blockList[1:]...)
 	blockList[1] = consumable
 
-	if config.Debug {
-		fmt.Println("Total number of items:", len(otherItemSet))
-		fmt.Println("Count of items that will be added:", willBeAdded)
-	}
+	client.Log.Debug("Total number of items:", len(otherItemSet))
+	client.Log.Debug("Count of items that will be added:", willBeAdded)
 
 	itemList := make([]Item, willBeAdded)
 	idx := 0
@@ -760,7 +738,7 @@ func setItems(doc *soup.Root, accId int64, sumId int, champId int, gameType *str
 	i++
 
 	itemPage := ItemPage{
-		AccountID: accId,
+		AccountID: client.account.AccountID,
 		ItemSets: []ItemSet{
 			{
 				AssociatedChampions: []int{champId},
@@ -779,39 +757,40 @@ func setItems(doc *soup.Root, accId int64, sumId int, champId int, gameType *str
 		Timestamp: 0,
 	}
 
-	command := "/lol-item-sets/v1/item-sets/" + strconv.Itoa(sumId) + "/sets"
+	command := "/lol-item-sets/v1/item-sets/" + strconv.Itoa(client.account.SummonerID) + "/sets"
 
 	//j, _ := json.Marshal(newRune)
 	b := new(bytes.Buffer)
 	err := json.NewEncoder(b).Encode(itemPage)
-
 	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error while setting items")
+		return false, err
 	}
 
-	req, err := http.NewRequest("PUT", values[4]+"://127.0.0.1:"+values[2]+command, b)
-
+	req, err := http.NewRequest("PUT", client.apiProtocol+"://127.0.0.1:"+client.apiPort+command, b)
 	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error while setting items")
+		return false, err
 	}
 
-	req.SetBasicAuth("riot", values[3])
+	req.SetBasicAuth("riot", client.apiPass)
 
-	resp, errs := cli.Do(req)
-	if errs != nil {
-		panic(errs)
+	resp, err := client.gameClient.Do(req)
+	if err != nil {
+		client.Log.Debug(err)
+		client.Log.Error("Error while setting items")
+		return false, err
 	}
 
-	if resp.StatusCode == 201 {
-		fmt.Println("Item page updated successfully")
-	} else {
-		fmt.Println("Item page update failed")
-	}
+	return resp.StatusCode == http.StatusCreated, err
 }
 
-func setSpells(doc *soup.Root) {
-	if !config.EnableSpell {
-		return
+// setSpells sets spells
+func (client *DFFClient) setSpells(doc *soup.Root) (bool, error) {
+	if !client.EnableSpell {
+		return false, nil
 	}
 
 	imgs := (*doc).Find("td", "class", "champion-overview__data")
@@ -828,18 +807,20 @@ func setSpells(doc *soup.Root) {
 
 	f, err := ioutil.ReadFile("./data/" + "summoner.json")
 	if err != nil {
-		panic(err)
-	}
-	//var data interface{}
-	err = json.Unmarshal(f, &spellFile)
-	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error while setting spells")
+		return false, err
 	}
 
-	if config.Debug {
-		fmt.Println("summoner.json version: ", spellFile.Version)
-		fmt.Println("Total spell count: ", len(spellFile.Data))
+	err = json.Unmarshal(f, &spellFile)
+	if err != nil {
+		client.Log.Debug(err)
+		client.Log.Error("Error while setting spells")
+		return false, err
 	}
+
+	client.Log.Debug("summoner.json version: ", spellFile.Version)
+	client.Log.Debug("Total spell count: ", len(spellFile.Data))
 
 	spellKeyList := make([]int64, len(spellImgs))
 	for x := 0; x < 10; x++ {
@@ -869,15 +850,15 @@ func setSpells(doc *soup.Root) {
 	// If user is using D key as flash, set flash for D
 	// If user is using F key as flash, set flash for F
 	// Otherwise, no change.
-	if config.DFlash && spellKeyList[1] == 4 {
+	if client.DFlash && spellKeyList[1] == 4 {
 		spellKeyList[1] = spellKeyList[0]
 		spellKeyList[0] = 4
-	} else if !config.DFlash && spellKeyList[0] == 4 {
+	} else if !client.DFlash && spellKeyList[0] == 4 {
 		spellKeyList[0] = spellKeyList[1]
 		spellKeyList[1] = 4
 	}
 
-	spells := MySelect{
+	spells := Spells{
 		Spell1ID: spellKeyList[0],
 		Spell2ID: spellKeyList[1],
 	}
@@ -886,97 +867,108 @@ func setSpells(doc *soup.Root) {
 	err = json.NewEncoder(b).Encode(spells)
 
 	command := "/lol-champ-select/v1/session/my-selection"
-	req, err := http.NewRequest("PATCH", values[4]+"://127.0.0.1:"+values[2]+command, b)
+	req, err := http.NewRequest("PATCH", client.apiProtocol+"://127.0.0.1:"+client.apiPort+command, b)
 	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error while setting spells")
+		return false, err
 	}
 
-	req.SetBasicAuth("riot", values[3])
+	req.SetBasicAuth("riot", client.apiPass)
 
-	resp, err := cli.Do(req)
-
+	resp, err := client.gameClient.Do(req)
 	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error while setting spells")
+		return false, err
 	}
 
-	if resp.StatusCode == 204 {
-		fmt.Println("Spell update successful")
-	} else {
-		fmt.Println("Spell update/skin update fail")
-	}
+	return resp.StatusCode == http.StatusNoContent, nil
 }
 
-func setRuneHelper(page RunePage) {
-	delRunes()
-
+// setRunePage set a rune page
+func (client *DFFClient) setRunePage(page RunePage) (bool, error) {
 	command := "/lol-perks/v1/pages"
 
-	//j, _ := json.Marshal(newRune)
+	if ok, err := client.delRunePage(); !ok || err != nil {
+		client.Log.Debug(err)
+		client.Log.Warning("Old rune page not deleted")
+	}
+
 	b := new(bytes.Buffer)
 	err := json.NewEncoder(b).Encode(page)
 
 	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error in rune helper")
+		return false, err
 	}
 
-	req, err := http.NewRequest("POST", values[4]+"://127.0.0.1:"+values[2]+command, b)
-
+	req, err := http.NewRequest("POST", client.apiProtocol+"://127.0.0.1:"+client.apiPort+command, b)
 	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error in rune helper")
+		return false, err
 	}
 
-	req.SetBasicAuth("riot", values[3])
+	req.SetBasicAuth("riot", client.apiPass)
 
-	resp, errs := cli.Do(req)
+	resp, errs := client.gameClient.Do(req)
 	if errs != nil {
-		panic(errs)
+		client.Log.Debug(err)
+		client.Log.Error("Error in rune helper")
+		return false, err
 	}
 
-	if resp.StatusCode == 200 {
-		fmt.Println("Rune Update successful")
-	} else {
-		fmt.Println("Rune Update failed")
-	}
+	return resp.StatusCode == http.StatusOK, nil
 }
 
-func delRunes() {
+// delRunePage deletes a rune page created by DFF, or the first rune page
+func (client *DFFClient) delRunePage() (deleted bool, err error) {
 	var runePages RunePages
 	var runePageCnt RunePageCount
-	deleted := false
 
-	// Delete "DFF" page
 	command := "/lol-perks/v1/pages"
-	err := json.NewDecoder(requestApi(&command, false)).Decode(&runePages)
-	if err != nil {
-		panic(err)
+	if err = json.NewDecoder(client.requestApi(&command)).Decode(&runePages); err != nil {
+		client.Log.Debug(err)
+		client.Log.Error("Error while getting rune pages from the client")
+		return false, err
 	}
 
 	command = "/lol-perks/v1/inventory"
-	err = json.NewDecoder(requestApi(&command, false)).Decode(&runePageCnt)
-	if err != nil {
-		panic(err)
+	if err = json.NewDecoder(client.requestApi(&command)).Decode(&runePageCnt); err != nil {
+		client.Log.Debug(err)
+		client.Log.Error("Error while getting total rune pages count")
+		return false, err
 	}
 
-	//fmt.Println("Total Rune pages:", len(runePages))
+	client.Log.Debug("Total Rune pages: ", len(runePages))
+
+	// Look for rune page starting with "DFF"
 	for _, page := range runePages {
-		//fmt.Println(page.Name)
+		client.Log.Debug("Current rune page: " + page.Name)
 		if strings.HasPrefix(page.Name, ProjectName) {
-			deleteRunePage(page.ID)
+			if ok, err := client.deleteRunePageWithId(page.ID); ok && err == nil {
+				deleted = true
+			}
+		}
+	}
+
+	// Delete the first rune page if all pages are used (excluding 5 default rune pages)
+	if !deleted && len(runePages)+5 >= runePageCnt.OwnedPageCount {
+		if ok, err := client.deleteRunePageWithId(runePages[0].ID); ok && err == nil {
 			deleted = true
 		}
 	}
-	if len(runePages)+5 >= runePageCnt.OwnedPageCount && !deleted {
-		// Delete the first rune page if all pages are used
-		deleteRunePage(runePages[0].ID)
-	}
+
+	return deleted, nil
 }
 
-func setRunes(doc *soup.Root, gameType *string) ([]RuneNamePage, [][]string) {
-	if !config.EnableRune {
+// setRunePageHelper will parse runes and make a RuneNamePage structure
+func (client *DFFClient) setRunePageHelper(doc *soup.Root, gameType *string) ([]RuneNamePage, [][]string) {
+	if !client.EnableRune {
 		return nil, nil
 	}
-
-	//delRunes()
 
 	runeDetailsDoc := (*doc).FindAll("span", "class", "pick-ratio__text")
 	runeDetails := make([][]string, len(runeDetailsDoc)*2)
@@ -1009,19 +1001,17 @@ func setRunes(doc *soup.Root, gameType *string) ([]RuneNamePage, [][]string) {
 			//fmt.Println(runeInfo[x].Name)
 		}
 	}
-	// Could be converted to FindAll
-	//links := (*doc).Find("div", "class", "perk-page-wrap")
 
 	links := (*doc).FindAll("div", "class", "perk-page-wrap")
 	for x, link := range links {
-		//do work here
 		// Category
 		imgs := link.FindAll("div", "class", "perk-page__item--mark")
 
 		runeCategoryList := make([]int, len(imgs))
 
 		if len(imgs) != 2 {
-			panic("Rune category updated?")
+			client.Log.Error("Rune category updated? Please submit a new issue at " + IssueUrl)
+			return nil, nil
 		}
 
 		for i, img := range imgs {
@@ -1038,7 +1028,8 @@ func setRunes(doc *soup.Root, gameType *string) ([]RuneNamePage, [][]string) {
 		runeList := make([]int, len(imgs)+len(fragImgs))
 
 		if len(runeList) != 9 {
-			panic("Runes updated?")
+			client.Log.Error("Runes updated? Please submit a new issue at " + IssueUrl)
+			return nil, nil
 		}
 
 		for i, img := range imgs {
@@ -1070,41 +1061,75 @@ func setRunes(doc *soup.Root, gameType *string) ([]RuneNamePage, [][]string) {
 		}
 	}
 
-	setRuneHelper(runeInfo[0].Page)
+	if ok, err := client.setRunePage(runeInfo[0].Page); !ok || err != nil {
+		client.Log.Debug(err)
+		client.Log.Error("Unable to set a rune page")
+		return nil, nil
+	}
 
 	return runeInfo, runeDetails
 }
 
-func downloadFile(url string) {
+func (client *DFFClient) downloadFile(url string) error {
 	fileName := strings.Split(url, "/")
 	out, err := os.Create("./data/" + fileName[len(fileName)-1])
 	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error while creating a file")
+		return err
 	}
 	defer out.Close()
 
 	resp, err := http.Get(url)
 	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error while downloading a file")
+		return err
 	}
 	defer resp.Body.Close()
 
 	_, err = io.Copy(out, resp.Body)
 	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error while saving a file")
+		return err
 	}
-	fmt.Println(fileName[len(fileName)-1] + " downloaded.")
+	client.Log.Info(fileName[len(fileName)-1] + " downloaded.")
+
+	return nil
 }
 
-func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widget.Label) ([][4]string, []RuneNamePage, [][]string) {
-	command := "/lol-champions/v1/inventories/" + strconv.Itoa(sumId) + "/champions/" + strconv.Itoa(champId)
+// TODO: remove panic, code review
+func (client *DFFClient) getChampId() (champId int, err error) {
+	command := "/lol-champ-select/v1/session"
+	var data ChampSelect
+
+	if err = json.NewDecoder(client.requestApi(&command)).Decode(&data); err != nil {
+		client.Log.Debug(err)
+		client.Log.Error("Error while getting champion ID")
+		return 0, err
+	}
+
+	// Find current user's champion ID
+	for _, member := range data.MyTeam {
+		if member.SummonerID == client.account.SummonerID {
+			champId = member.ChampionID
+		}
+	}
+
+	return champId, err
+}
+
+// TODO: remove panic, code review
+func (client *DFFClient) getRunes(queueId int, champId int, champLabel *widget.Label) ([][4]string, []RuneNamePage, [][]string) {
+	command := "/lol-champions/v1/inventories/" + strconv.Itoa(client.account.SummonerID) + "/champions/" + strconv.Itoa(champId)
 	var data Champion
 	var gameType, url string
 	var posUrlList [][4]string = nil
 	var runeNamePages []RuneNamePage = nil
 	var runeDetails [][]string
 
-	err := json.NewDecoder(requestApi(&command, false)).Decode(&data)
+	err := json.NewDecoder(client.requestApi(&command)).Decode(&data)
 
 	if err != nil {
 		panic(err)
@@ -1116,7 +1141,7 @@ func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widg
 		gameType = "URF"
 		fmt.Println("ULTRA RAPID FIRE MODE IS ON!!!")
 		url = "https://op.gg/urf/" + data.Alias + "/statistics"
-		soup.Cookie("customLocale", config.Language)
+		soup.Cookie("customLocale", client.Language)
 		resp, err := soup.Get(url)
 		if err != nil {
 			panic(err)
@@ -1124,15 +1149,15 @@ func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widg
 
 		doc := soup.HTMLParse(resp)
 
-		runeNamePages, runeDetails = setRunes(&doc, &gameType)
-		setItems(&doc, accId, sumId, champId, &gameType)
-		setSpells(&doc)
+		runeNamePages, runeDetails = client.setRunePageHelper(&doc, &gameType)
+		client.setItems(&doc, champId, &gameType)
+		client.setSpells(&doc)
 
 	} else if queueId == 450 {
 		gameType = "ARAM"
 		fmt.Println("ARAM MODE IS ON!!!")
 		url = "https://op.gg/aram/" + data.Alias + "/statistics"
-		soup.Cookie("customLocale", config.Language)
+		soup.Cookie("customLocale", client.Language)
 		resp, err := soup.Get(url)
 		if err != nil {
 			panic(err)
@@ -1140,13 +1165,13 @@ func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widg
 
 		doc := soup.HTMLParse(resp)
 
-		runeNamePages, runeDetails = setRunes(&doc, &gameType)
-		setItems(&doc, accId, sumId, champId, &gameType)
-		setSpells(&doc)
+		runeNamePages, runeDetails = client.setRunePageHelper(&doc, &gameType)
+		client.setItems(&doc, champId, &gameType)
+		client.setSpells(&doc)
 	} else {
 		// Can add region here
 		url = "https://op.gg/champion/" + data.Alias
-		soup.Cookie("customLocale", config.Language)
+		soup.Cookie("customLocale", client.Language)
 		resp, err := soup.Get(url)
 		if err != nil {
 			panic(err)
@@ -1154,9 +1179,9 @@ func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widg
 
 		doc := soup.HTMLParse(resp)
 
-		runeNamePages, runeDetails = setRunes(&doc, &gameType)
-		setItems(&doc, accId, sumId, champId, &gameType)
-		setSpells(&doc)
+		runeNamePages, runeDetails = client.setRunePageHelper(&doc, &gameType)
+		client.setItems(&doc, champId, &gameType)
+		client.setSpells(&doc)
 
 		// Find champion positions
 		positions := doc.FindAll("li", "class", "champion-stats-header__position")
@@ -1178,163 +1203,118 @@ func getRunes(accId int64, sumId int, champId int, queueId int, champLabel *widg
 			posUrlList[i][3] = gameType
 
 		}
-		lastRole = posUrlList[0][0]
+		client.lastRole = posUrlList[0][0]
 
 	}
 	return posUrlList, runeNamePages, runeDetails
 }
 
-func getChampId(sumId int) int {
-	command := "/lol-champ-select/v1/session"
-	var data ChampSelect
-	var champId = 0
+// TODO: remove panic, code review
+// checkFiles checks essential files and syncs if outdated
+func (client *DFFClient) checkFiles() (err error) {
+	var version []string
 
-	err := json.NewDecoder(requestApi(&command, false)).Decode(&data)
-
+	// Get version list
+	resp, err := http.Get("https://ddragon.leagueoflegends.com/api/versions.json")
 	if err != nil {
-		panic(err)
-	}
-
-	// Find current user's champion ID
-	for _, member := range data.MyTeam {
-		if member.SummonerID == sumId {
-			champId = member.ChampionID
-		}
-	}
-
-	return champId
-}
-
-func writeConfig() {
-	jsonConf, _ := json.MarshalIndent(config, "", "\t")
-	err := ioutil.WriteFile("config.json", jsonConf, 0644)
-	if err != nil {
-		panic(err)
-	}
-}
-
-func readConfig() {
-	_, err := os.Stat("config.json")
-
-	config = Config{
-		Debug:       false,
-		Interval:    2,
-		ClientDir:   "C:/Riot Games/League of Legends/",
-		EnableRune:  true,
-		EnableItem:  true,
-		EnableSpell: true,
-		DFlash:      true,
-		Language:    "en_US",
-	}
-
-	if os.IsNotExist(err) {
-		fmt.Println("Cannot open config file. Default settings will be used.")
-		writeConfig()
-	} else {
-		jsonConf, _ := ioutil.ReadFile("config.json")
-		err := json.Unmarshal(jsonConf, &config)
-		if err != nil {
-			panic(err)
-		}
-
-		if config.Interval < 1 {
-			config.Interval = 1
-		} else if config.Interval > 5 {
-			config.Interval = 5
-		}
-	}
-}
-
-func checkFiles() {
-	resp, err := http.Get("http://ddragon.leagueoflegends.com/api/versions.json")
-	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error while checking the version")
+		return err
 	}
 	defer resp.Body.Close()
 
-	var version []string
-	err = json.NewDecoder(resp.Body).Decode(&version)
-
-	if err != nil {
-		panic(err)
+	if err = json.NewDecoder(resp.Body).Decode(&version); err != nil {
+		client.Log.Debug(err)
+		client.Log.Error("Error while decoding versions.json file")
+		return err
 	}
 
+	// First index contains the latest version (e.g. "12.1.1")
 	leagueVersion := version[0]
 
-	if _, err := os.Stat("./data"); os.IsNotExist(err) {
+	if _, err = os.Stat("./data"); os.IsNotExist(err) {
 		_ = os.Mkdir("./data", 0700)
 		// Summoner spells
-		downloadFile("http://ddragon.leagueoflegends.com/cdn/" + leagueVersion + "/data/en_US/" + "summoner.json")
+		client.downloadFile("https://ddragon.leagueoflegends.com/cdn/" + leagueVersion + "/data/en_US/" + "summoner.json")
 		// Items
-		//downloadFile("http://ddragon.leagueoflegends.com/cdn/"+ leagueVersion +"/data/en_US/"+"item.json")
+		//downloadFile("https://ddragon.leagueoflegends.com/cdn/"+ leagueVersion +"/data/en_US/"+"item.json")
 		// Maps
-		//downloadFile("http://ddragon.leagueoflegends.com/cdn/"+ leagueVersion +"/data/en_US/"+"map.json.json")
+		//downloadFile("https://ddragon.leagueoflegends.com/cdn/"+ leagueVersion +"/data/en_US/"+"map.json.json")
 		// Runes
-		//downloadFile("http://ddragon.leagueoflegends.com/cdn/"+ leagueVersion +"/data/en_US/"+"runesReforged.json")
+		//downloadFile("https://ddragon.leagueoflegends.com/cdn/"+ leagueVersion +"/data/en_US/"+"runesReforged.json")
 		// Champions
-		//downloadFile("http://ddragon.leagueoflegends.com/cdn/"+ leagueVersion +"/data/en_US/"+"champion.json")
-	} else {
-		files, err := ioutil.ReadDir("./data")
-		if err != nil {
-			panic(err)
+		//downloadFile("https://ddragon.leagueoflegends.com/cdn/"+ leagueVersion +"/data/en_US/"+"champion.json")
+	} else if err != nil {
+		var files []fs.FileInfo
+		var ver FileVersion
+		var f []byte
+
+		if files, err = ioutil.ReadDir("./data"); err != nil {
+			client.Log.Debug(err)
+			client.Log.Error("Error while reading directory")
+			return err
 		}
 
 		for _, file := range files {
-			var ver FileVersion
-			f, err := ioutil.ReadFile("./data/" + file.Name())
-			if err != nil {
-				panic(err)
+			if f, err = ioutil.ReadFile("./data/" + file.Name()); err != nil {
+				client.Log.Debug(err)
+				client.Log.Error("Error while reading file: " + file.Name())
+				continue
 			}
-			//var data interface{}
-			err = json.Unmarshal(f, &ver)
-			if err != nil {
-				panic(err)
+
+			if err = json.Unmarshal(f, &ver); err != nil {
+				client.Log.Debug(err)
+				client.Log.Error("Error while decoding json file: " + file.Name())
+				continue
 			}
+
 			if leagueVersion != ver.Version {
-				downloadFile("http://ddragon.leagueoflegends.com/cdn/" + leagueVersion + "/data/en_US/" + file.Name())
+				//if err = os.Remove("./data/" + file.Name()); err != nil {
+				//	client.log.Debug(err)
+				//	client.log.Error("Error while deleting outdated file: " + file.Name())
+				//}
+				client.downloadFile("https://ddragon.leagueoflegends.com/cdn/" + leagueVersion + "/data/en_US/" + file.Name())
 			}
 		}
 	}
+	return err
 }
 
-func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait *sync.WaitGroup, runeSelect *widget.Select) {
-	defer wait.Done()
-	status.SetText("Starting...")
-	// Read lockfile
-	content := readLock()
-	values = strings.Split(content, ":")
+// TODO: remove panic, code review
+func (client *DFFClient) Run(window fyne.Window, status *widget.Label, p *widget.Select, champLabel *widget.Label, runeSelect *widget.Select) {
+	var err error
 
-	if config.Debug {
-		for _, val := range values {
-			fmt.Println(val)
-		}
+	status.SetText("Starting...")
+
+	if err = client.readLockFile(); err != nil {
+		status.SetText("Error. Check log")
+		window.RequestFocus()
+		return
 	}
 
-	//command := "/lol-summoner/v1/current-summoner" // returns login information
-	//command := "/lol-champ-select/v1/session" // champion select session information
-	//command := "/riotclient/auth-token" // returns auth token
-	//command := "/riotclient/region-locale" // returns region, language etc
-	//command := "/lol-perks/v1/currentpage" // get current rune page
-
-	accId, sumId := getAccInfo()
+	if err = client.getAccInfo(); err != nil {
+		status.SetText("Error. Check log")
+		window.RequestFocus()
+		return
+	}
 
 	//var isCustomGame = false
 	var prevChampId, champId int
 	var queueId = -1
 
-	//// Check game type (norms, urf)
-	//for queueId == -1 && !isCustomGame {
-	//	queueId, isCustomGame = getQueueId()
-	//	time.Sleep(time.Duration(interval) * time.Second)
-	//}
-
 	// Check if in lobby
 	for champId == 0 {
 		status.SetText("Waiting...")
-		fmt.Println("Waiting for a champion to be selected...")
-		queueId, _ = getQueueId()
-		champId = getChampId(sumId)
-		time.Sleep(time.Duration(config.Interval) * time.Second)
+		client.Log.Debug("Waiting for a champion to be selected...")
+		if queueId, err = client.getQueueId(); err != nil {
+			status.SetText("Error. Check log")
+			window.RequestFocus()
+		}
+		if champId, err = client.getChampId(); err != nil {
+			status.SetText("Error. Check log")
+			window.RequestFocus()
+		}
+		time.Sleep(time.Duration(client.Interval) * time.Second)
 	}
 
 	// For debug purpose; replace command to test the api
@@ -1343,13 +1323,21 @@ func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait 
 	//body, _ := ioutil.ReadAll(resp)
 	//fmt.Println(string(body))
 
-	// Loop until champion select phase is over
-	for isInChampSelect() {
-		champId := getChampId(sumId)
+	var isInChampSelect = true
+	for isInChampSelect {
+		if isInChampSelect, err = client.isInChampSelect(); err != nil {
+			status.SetText("Error. Check log")
+			window.RequestFocus()
+		}
+
+		if champId, err = client.getChampId(); err != nil {
+			status.SetText("Error. Check log")
+			window.RequestFocus()
+		}
 
 		if champId != 0 && prevChampId != champId {
 			status.SetText("Setting...")
-			result, runeNamePages, runeDetails := getRunes(accId, sumId, champId, queueId, champLabel)
+			result, runeNamePages, runeDetails := client.getRunes(queueId, champId, champLabel)
 			status.SetText("Updated...")
 
 			if len(runeNamePages) > 0 {
@@ -1365,7 +1353,7 @@ func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait 
 					for _, elem := range runeNamePages {
 						name := strings.Fields(s)
 						if name[0]+" "+name[1] == elem.Name {
-							setRuneHelper(elem.Page)
+							client.setRunePage(elem.Page)
 						}
 					}
 				}
@@ -1383,7 +1371,7 @@ func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait 
 				p.Selected = options[0]
 				p.OnChanged = func(s string) {
 					sel := strings.TrimSpace(strings.Split(s, "-")[0])
-					if lastRole != sel {
+					if client.lastRole != sel {
 						for _, res := range result {
 							if res[0] == sel {
 								status.SetText("Setting...")
@@ -1392,7 +1380,7 @@ func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait 
 									panic(err)
 								}
 								doc := soup.HTMLParse(resp)
-								runeNamePages, runeDetails := setRunes(&doc, &(res[3]))
+								runeNamePages, runeDetails := client.setRunePageHelper(&doc, &(res[3]))
 
 								if len(runeNamePages) > 0 {
 									options := make([]string, len(runeNamePages))
@@ -1407,16 +1395,16 @@ func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait 
 										for _, elem := range runeNamePages {
 											name := strings.Fields(s)
 											if name[0]+" "+name[1] == elem.Name {
-												setRuneHelper(elem.Page)
+												client.setRunePage(elem.Page)
 											}
 										}
 									}
 									runeSelect.Refresh()
 								}
 
-								setItems(&doc, accId, sumId, champId, &(res[3]))
-								setSpells(&doc)
-								lastRole = strings.TrimSpace(res[0])
+								client.setItems(&doc, champId, &(res[3]))
+								client.setSpells(&doc)
+								client.lastRole = strings.TrimSpace(res[0])
 								status.SetText("Updated...")
 							}
 						}
@@ -1429,197 +1417,28 @@ func run(status *widget.Label, p *widget.Select, champLabel *widget.Label, wait 
 			}
 			prevChampId = champId
 		}
-		fmt.Println("Checking if Champion ID was updated...")
-		time.Sleep(time.Duration(config.Interval) * time.Second)
+		client.Log.Debug("Checking if Champion ID was updated...")
+		time.Sleep(time.Duration(client.Interval) * time.Second)
 	}
 	p.Options = nil
+	client.lastRole = ""
 	p.Refresh()
 
 	status.SetText("Idle...")
+	client.Log.Debug("User is in the game")
 
-	time.Sleep(30 * time.Second)
-	inGame := getUxStatus()
-	// Perhaps also check available?
-	for inGame {
-		fmt.Println("In game: ", inGame)
+	var isInGame = true
+	for isInGame {
 		time.Sleep(1 * time.Minute)
-		inGame = getUxStatus()
-	}
-}
-
-func runLoop(status *widget.Label, roleSelect *widget.Select, selectedChamp *widget.Label, runeSelect *widget.Select) {
-	var wait sync.WaitGroup
-	for {
-		go run(status, roleSelect, selectedChamp, &wait, runeSelect)
-		wait.Add(1)
-		wait.Wait()
-	}
-}
-
-func main() {
-	// Initialize http client
-	tr := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-	}
-	cli = &http.Client{Transport: tr}
-
-	readConfig()
-	checkFiles()
-
-	a := app.New()
-	w := a.NewWindow(ProjectName + " " + Version)
-
-	w.SetOnClosed(func() {
-		writeConfig()
-		os.Exit(0)
-	})
-
-	// TODO: add write config, debug flag
-	// TODO: add check if in game
-	// TODO: Add infinite execution
-
-	sl := widget.NewSlider(1, 5)
-	sl.Value = config.Interval
-	sl.Step = 0.5
-	sl.OnChanged = func(f float64) {
-		//fmt.Println("Poll interval: ", f)
-		config.Interval = f
-	}
-
-	infoTextStyle := fyne.TextStyle{
-		Bold:      true,
-		Italic:    false,
-		Monospace: true,
-	}
-	status := widget.NewLabelWithStyle("Not running", fyne.TextAlignCenter, infoTextStyle)
-	selectedChamp := widget.NewLabelWithStyle("Not selected", fyne.TextAlignCenter, infoTextStyle)
-
-	enableRunesCheck := widget.NewCheck("", func(b bool) {
-		config.EnableRune = b
-	})
-	enableRunesCheck.SetChecked(config.EnableRune)
-
-	enableItemsCheck := widget.NewCheck("", func(b bool) {
-		config.EnableItem = b
-	})
-	enableItemsCheck.SetChecked(config.EnableItem)
-
-	roleSelect := widget.NewSelect(nil, nil)
-	roleSelect.PlaceHolder = "No champion selected"
-
-	runeSelect := widget.NewSelect(nil, nil)
-	runeSelect.PlaceHolder = "No rune selected"
-
-	enableSpellCheck := widget.NewCheck("", func(b bool) {
-		config.EnableSpell = b
-	})
-	enableSpellCheck.SetChecked(config.EnableSpell)
-
-	enableDFlash := widget.NewCheck("", func(b bool) {
-		config.DFlash = b
-	})
-	enableDFlash.SetChecked(config.DFlash)
-
-	enableDebugging := widget.NewCheck("", func(b bool) {
-		config.Debug = b
-	})
-	enableDebugging.SetChecked(config.Debug)
-
-	go runLoop(status, roleSelect, selectedChamp, runeSelect)
-
-	checkUpdateButton := widget.NewButton("Check Update", func() {
-		req, err := http.Get("https://api.github.com/repos/jaeha-choi/DFF/releases/latest")
-		if err != nil {
-			panic(err)
+		client.Log.Debug("In game: ", isInGame)
+		if isInGame, err = client.checkIsInGame(); err != nil {
+			status.SetText("Error. Check log")
 		}
-
-		if req.StatusCode != 200 {
-			widget.ShowPopUpAtPosition(widget.NewLabel("Could not connect to github repository."),
-				w.Canvas(), fyne.NewPos(50, 50))
-		} else {
-			var update GitHubUpdate
-			err = json.NewDecoder(req.Body).Decode(&update)
-			if err != nil {
-				panic(err)
-			}
-
-			if update.TagName != Version {
-				downloadUrl := ""
-				for _, asset := range update.Assets {
-					if asset.Name == "DFF_windows.zip" {
-						downloadUrl = asset.BrowserDownloadURL
-					}
-				}
-
-				if downloadUrl == "" {
-					popup := widget.NewLabel("Update Error. File not found.")
-					widget.ShowPopUpAtPosition(popup,
-						w.Canvas(), fyne.NewPos(50, 50))
-					time.Sleep(3 * time.Second)
-				}
-
-				name := strings.Split(downloadUrl, "/")
-				out, err := os.Create(name[len(name)-1])
-				if err != nil {
-					panic(err)
-				}
-				defer out.Close()
-
-				resp, err := http.Get(downloadUrl)
-				if err != nil {
-					panic(err)
-				}
-				defer resp.Body.Close()
-
-				_, err = io.Copy(out, resp.Body)
-				if err != nil {
-					panic(err)
-				}
-
-				fmt.Println(name[len(name)-1] + " downloaded.")
-				popup := container.NewVBox(widget.NewLabel("Version "+update.TagName+" downloaded."),
-					widget.NewLabel("Program will now exit."))
-				widget.ShowPopUpAtPosition(popup,
-					w.Canvas(), fyne.NewPos(50, 50))
-				time.Sleep(3 * time.Second)
-				os.Exit(0)
-			} else {
-				widget.ShowPopUpAtPosition(widget.NewLabel("No update found"),
-					w.Canvas(), fyne.NewPos(50, 50))
-			}
-		}
-	})
-
-	//ss := "123456789012345678901234"
-	//output := widget.NewTextGridFromString(ss[:23]+"\n"+ss[23:])
-
-	///lol-lobby/v1/lobby/availability
-	///lol-lobby/v1/lobby/countdown
-	///riotclient/get_region_locale
-
-	w.SetContent(
-		container.NewVBox(
-			container.NewHBox(
-				container.NewVBox(
-					widget.NewLabel(ProjectName+" "+Version),
-					widget.NewLabel("Program Status:"),
-					status,
-					container.NewHBox(widget.NewLabel("Current Champion:")),
-					selectedChamp),
-				container.NewVBox(
-					checkUpdateButton,
-					container.NewHBox(widget.NewLabel("Debug"), enableDebugging),
-					container.NewHBox(widget.NewLabel("Auto runes"), enableRunesCheck),
-					container.NewHBox(widget.NewLabel("Auto items"), enableItemsCheck),
-					container.NewHBox(widget.NewLabel("Auto spells"), enableSpellCheck),
-					container.NewHBox(widget.NewLabel("Left Flash"), enableDFlash),
-					widget.NewLabel("Polling interval"),
-					sl,
-				)),
-			roleSelect,
-			runeSelect))
-
-	//output))
-	w.SetFixedSize(true)
-	w.ShowAndRun()
+	}
 }
+
+//command := "/lol-summoner/v1/current-summoner" // returns login information
+//command := "/lol-champ-select/v1/session" // champion select session information
+//command := "/riotclient/auth-token" // returns auth token
+//command := "/riotclient/region-locale" // returns region, language etc
+//command := "/lol-perks/v1/currentpage" // get current rune page
