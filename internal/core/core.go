@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/tls"
 	"encoding/json"
-	"fmt"
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
 	"github.com/anaskhan96/soup"
@@ -1099,7 +1098,6 @@ func (client *DFFClient) downloadFile(url string) error {
 	return nil
 }
 
-// TODO: remove panic, code review
 func (client *DFFClient) getChampId() (champId int, err error) {
 	command := "/lol-champ-select/v1/session"
 	var data ChampSelect
@@ -1114,6 +1112,7 @@ func (client *DFFClient) getChampId() (champId int, err error) {
 	for _, member := range data.MyTeam {
 		if member.SummonerID == client.account.SummonerID {
 			champId = member.ChampionID
+			break
 		}
 	}
 
@@ -1130,16 +1129,17 @@ func (client *DFFClient) getRunes(queueId int, champId int, champLabel *widget.L
 	var runeDetails [][]string
 
 	err := json.NewDecoder(client.requestApi(&command)).Decode(&data)
-
 	if err != nil {
-		panic(err)
+		client.Log.Debug(err)
+		client.Log.Error("Error while getting runes")
 	}
 	champLabel.SetText(data.Alias)
-	fmt.Println("Selected Champion: ", data.Alias)
+	client.Log.Debug("Selected Champion: ", data.Alias)
 
+	// URF, ARURF
 	if queueId == 900 {
 		gameType = "URF"
-		fmt.Println("ULTRA RAPID FIRE MODE IS ON!!!")
+		client.Log.Info("ULTRA RAPID FIRE MODE IS ON!!!")
 		url = "https://op.gg/urf/" + data.Alias + "/statistics"
 		soup.Cookie("customLocale", client.Language)
 		resp, err := soup.Get(url)
@@ -1155,7 +1155,7 @@ func (client *DFFClient) getRunes(queueId int, champId int, champLabel *widget.L
 
 	} else if queueId == 450 {
 		gameType = "ARAM"
-		fmt.Println("ARAM MODE IS ON!!!")
+		client.Log.Info("ARAM MODE IS ON!!!")
 		url = "https://op.gg/aram/" + data.Alias + "/statistics"
 		soup.Cookie("customLocale", client.Language)
 		resp, err := soup.Get(url)
@@ -1196,7 +1196,7 @@ func (client *DFFClient) getRunes(queueId int, champId int, champLabel *widget.L
 			role := pos.Find("span", "class", "champion-stats-header__position__role").Text()
 			rate := pos.Find("span", "class", "champion-stats-header__position__rate").Text()
 
-			fmt.Println(i, ". "+role+": ", rate)
+			client.Log.Debug(i, ". "+role+": ", rate)
 			posUrlList[i][0] = strings.TrimSpace(role)
 			posUrlList[i][1] = rate
 			posUrlList[i][2] = link
