@@ -7,12 +7,15 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/widget"
 	"github.com/anaskhan96/soup"
+	"github.com/jaeha-choi/DFF/internal/cache"
+	"github.com/jaeha-choi/DFF/internal/datatype"
 	"github.com/jaeha-choi/DFF/pkg/log"
 	"io"
 	"io/fs"
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -29,7 +32,8 @@ type DFFClient struct {
 	lastRole    string
 	Log         *log.Logger
 	gameClient  *http.Client
-	account     *AccountInfo
+	account     *datatype.AccountInfo
+	cache       *cache.Cache
 
 	Debug       bool    `json:"debug"`
 	Interval    float64 `json:"interval"`
@@ -51,329 +55,37 @@ type FileVersion struct {
 	Version string `json:"version"`
 }
 
-type Spells struct {
-	//SelectedSkinID int32 `json:"selectedSkinId"`
-	Spell1ID int64 `json:"spell1Id"`
-	Spell2ID int64 `json:"spell2Id"`
-	//WardSkinID     int64 `json:"wardSkinId"`
-}
-
-type Item struct {
-	Count int    `json:"count"`
-	ID    string `json:"id"`
-}
-
-type ItemBlock struct {
-	HideIfSummonerSpell string `json:"hideIfSummonerSpell"`
-	Items               []Item `json:"items"`
-	ShowIfSummonerSpell string `json:"showIfSummonerSpell"`
-	Type                string `json:"type"`
-}
-
-type ItemSet struct {
-	AssociatedChampions []int         `json:"associatedChampions"`
-	AssociatedMaps      []int         `json:"associatedMaps"`
-	Blocks              []ItemBlock   `json:"blocks"`
-	Map                 string        `json:"map"`
-	Mode                string        `json:"mode"`
-	PreferredItemSlots  []interface{} `json:"preferredItemSlots"`
-	Sortrank            int           `json:"sortrank"`
-	StartedFrom         string        `json:"startedFrom"`
-	Title               string        `json:"title"`
-	Type                string        `json:"type"`
-	UID                 string        `json:"uid"`
-}
-
-type ItemPage struct {
-	AccountID int64     `json:"accountId"`
-	ItemSets  []ItemSet `json:"itemSets"`
-	Timestamp int64     `json:"timestamp"`
-}
-
-type RunePageCount struct {
-	OwnedPageCount int `json:"ownedPageCount"`
-}
-
 type RuneNamePage struct {
 	Name string
-	Page RunePage
-}
-
-type RunePage struct {
-	AutoModifiedSelections []interface{} `json:"autoModifiedSelections"`
-	Current                bool          `json:"current"`
-	ID                     int           `json:"id"`
-	IsActive               bool          `json:"isActive"`
-	IsDeletable            bool          `json:"isDeletable"`
-	IsEditable             bool          `json:"isEditable"`
-	IsValid                bool          `json:"isValid"`
-	LastModified           int64         `json:"lastModified"`
-	Name                   string        `json:"name"`
-	Order                  int           `json:"order"`
-	PrimaryStyleID         int           `json:"primaryStyleId"`
-	SelectedPerkIds        []int         `json:"selectedPerkIds"`
-	SubStyleID             int           `json:"subStyleId"`
-}
-
-type RunePages []struct {
-	AutoModifiedSelections []interface{} `json:"autoModifiedSelections"`
-	Current                bool          `json:"current"`
-	ID                     int           `json:"id"`
-	IsActive               bool          `json:"isActive"`
-	IsDeletable            bool          `json:"isDeletable"`
-	IsEditable             bool          `json:"isEditable"`
-	IsValid                bool          `json:"isValid"`
-	LastModified           int64         `json:"lastModified"`
-	Name                   string        `json:"name"`
-	Order                  int           `json:"order"`
-	PrimaryStyleID         int           `json:"primaryStyleId"`
-	SelectedPerkIds        []int         `json:"selectedPerkIds"`
-	SubStyleID             int           `json:"subStyleId"`
-}
-
-type QueueInfo struct {
-	CanInviteOthersAtEog bool `json:"canInviteOthersAtEog"`
-	CurrentLobbyStatus   struct {
-		AllowedPlayAgain      bool          `json:"allowedPlayAgain"`
-		CustomSpectatorPolicy string        `json:"customSpectatorPolicy"`
-		InvitedSummonerIds    []interface{} `json:"invitedSummonerIds"`
-		IsCustom              bool          `json:"isCustom"`
-		IsLeader              bool          `json:"isLeader"`
-		IsPracticeTool        bool          `json:"isPracticeTool"`
-		IsSpectator           bool          `json:"isSpectator"`
-		LobbyID               string        `json:"lobbyId"`
-		MemberSummonerIds     []int         `json:"memberSummonerIds"`
-		QueueID               int           `json:"queueId"`
-	} `json:"currentLobbyStatus"`
-	LastQueuedLobbyStatus struct {
-		AllowedPlayAgain      bool          `json:"allowedPlayAgain"`
-		CustomSpectatorPolicy string        `json:"customSpectatorPolicy"`
-		InvitedSummonerIds    []interface{} `json:"invitedSummonerIds"`
-		IsCustom              bool          `json:"isCustom"`
-		IsLeader              bool          `json:"isLeader"`
-		IsPracticeTool        bool          `json:"isPracticeTool"`
-		IsSpectator           bool          `json:"isSpectator"`
-		LobbyID               string        `json:"lobbyId"`
-		MemberSummonerIds     []int         `json:"memberSummonerIds"`
-		QueueID               int           `json:"queueId"`
-	} `json:"lastQueuedLobbyStatus"`
-}
-
-type Champion struct {
-	Active             bool          `json:"active"`
-	Alias              string        `json:"alias"`
-	BanVoPath          string        `json:"banVoPath"`
-	BaseLoadScreenPath string        `json:"baseLoadScreenPath"`
-	BotEnabled         bool          `json:"botEnabled"`
-	ChooseVoPath       string        `json:"chooseVoPath"`
-	DisabledQueues     []interface{} `json:"disabledQueues"`
-	FreeToPlay         bool          `json:"freeToPlay"`
-	ID                 int           `json:"id"`
-	Name               string        `json:"name"`
-	Ownership          struct {
-		FreeToPlayReward bool `json:"freeToPlayReward"`
-		Owned            bool `json:"owned"`
-		Rental           struct {
-			EndDate           int  `json:"endDate"`
-			PurchaseDate      int  `json:"purchaseDate"`
-			Rented            bool `json:"rented"`
-			WinCountRemaining int  `json:"winCountRemaining"`
-		} `json:"rental"`
-	} `json:"ownership"`
-	Passive struct {
-		Description string `json:"description"`
-		Name        string `json:"name"`
-	} `json:"passive"`
-	Purchased         int      `json:"purchased"`
-	RankedPlayEnabled bool     `json:"rankedPlayEnabled"`
-	Roles             []string `json:"roles"`
-	Skins             []struct {
-		ChampionID int    `json:"championId"`
-		ChromaPath string `json:"chromaPath"`
-		Chromas    []struct {
-			ChampionID   int      `json:"championId"`
-			ChromaPath   string   `json:"chromaPath"`
-			Colors       []string `json:"colors"`
-			Disabled     bool     `json:"disabled"`
-			ID           int      `json:"id"`
-			LastSelected bool     `json:"lastSelected"`
-			Name         string   `json:"name"`
-			Ownership    struct {
-				FreeToPlayReward bool `json:"freeToPlayReward"`
-				Owned            bool `json:"owned"`
-				Rental           struct {
-					EndDate           int  `json:"endDate"`
-					PurchaseDate      int  `json:"purchaseDate"`
-					Rented            bool `json:"rented"`
-					WinCountRemaining int  `json:"winCountRemaining"`
-				} `json:"rental"`
-			} `json:"ownership"`
-			StillObtainable bool `json:"stillObtainable"`
-		} `json:"chromas"`
-		CollectionSplashVideoPath interface{}   `json:"collectionSplashVideoPath"`
-		Disabled                  bool          `json:"disabled"`
-		Emblems                   []interface{} `json:"emblems"`
-		FeaturesText              interface{}   `json:"featuresText"`
-		ID                        int           `json:"id"`
-		IsBase                    bool          `json:"isBase"`
-		LastSelected              bool          `json:"lastSelected"`
-		LoadScreenPath            string        `json:"loadScreenPath"`
-		Name                      string        `json:"name"`
-		Ownership                 struct {
-			FreeToPlayReward bool `json:"freeToPlayReward"`
-			Owned            bool `json:"owned"`
-			Rental           struct {
-				EndDate           int  `json:"endDate"`
-				PurchaseDate      int  `json:"purchaseDate"`
-				Rented            bool `json:"rented"`
-				WinCountRemaining int  `json:"winCountRemaining"`
-			} `json:"rental"`
-		} `json:"ownership"`
-		QuestSkinInfo struct {
-			CollectionsCardPath    string        `json:"collectionsCardPath"`
-			CollectionsDescription string        `json:"collectionsDescription"`
-			DescriptionInfo        []interface{} `json:"descriptionInfo"`
-			Name                   string        `json:"name"`
-			SplashPath             string        `json:"splashPath"`
-			Tiers                  []interface{} `json:"tiers"`
-			TilePath               string        `json:"tilePath"`
-			UncenteredSplashPath   string        `json:"uncenteredSplashPath"`
-		} `json:"questSkinInfo"`
-		RarityGemPath        string      `json:"rarityGemPath"`
-		SkinType             string      `json:"skinType"`
-		SplashPath           string      `json:"splashPath"`
-		SplashVideoPath      interface{} `json:"splashVideoPath"`
-		StillObtainable      bool        `json:"stillObtainable"`
-		TilePath             string      `json:"tilePath"`
-		UncenteredSplashPath string      `json:"uncenteredSplashPath"`
-	} `json:"skins"`
-	Spells []struct {
-		Description string `json:"description"`
-		Name        string `json:"name"`
-	} `json:"spells"`
-	SquarePortraitPath string `json:"squarePortraitPath"`
-	StingerSfxPath     string `json:"stingerSfxPath"`
-	TacticalInfo       struct {
-		DamageType string `json:"damageType"`
-		Difficulty int    `json:"difficulty"`
-		Style      int    `json:"style"`
-	} `json:"tacticalInfo"`
-	Title string `json:"title"`
-}
-
-type AccountInfo struct {
-	AccountID                   int64  `json:"accountId"`
-	DisplayName                 string `json:"displayName"`
-	InternalName                string `json:"internalName"`
-	NameChangeFlag              bool   `json:"nameChangeFlag"`
-	PercentCompleteForNextLevel int    `json:"percentCompleteForNextLevel"`
-	ProfileIconID               int    `json:"profileIconId"`
-	Puuid                       string `json:"puuid"`
-	RerollPoints                struct {
-		CurrentPoints    int `json:"currentPoints"`
-		MaxRolls         int `json:"maxRolls"`
-		NumberOfRolls    int `json:"numberOfRolls"`
-		PointsCostToRoll int `json:"pointsCostToRoll"`
-		PointsToReroll   int `json:"pointsToReroll"`
-	} `json:"rerollPoints"`
-	SummonerID       int  `json:"summonerId"`
-	SummonerLevel    int  `json:"summonerLevel"`
-	Unnamed          bool `json:"unnamed"`
-	XpSinceLastLevel int  `json:"xpSinceLastLevel"`
-	XpUntilNextLevel int  `json:"xpUntilNextLevel"`
-}
-
-type ChampSelect struct {
-	Actions [][]struct {
-		ActorCellID  int    `json:"actorCellId"`
-		ChampionID   int    `json:"championId"`
-		Completed    bool   `json:"completed"`
-		ID           int    `json:"id"`
-		IsAllyAction bool   `json:"isAllyAction"`
-		IsInProgress bool   `json:"isInProgress"`
-		Type         string `json:"type"`
-	} `json:"actions"`
-	AllowBattleBoost    bool `json:"allowBattleBoost"`
-	AllowDuplicatePicks bool `json:"allowDuplicatePicks"`
-	AllowLockedEvents   bool `json:"allowLockedEvents"`
-	AllowRerolling      bool `json:"allowRerolling"`
-	AllowSkinSelection  bool `json:"allowSkinSelection"`
-	Bans                struct {
-		MyTeamBans    []interface{} `json:"myTeamBans"`
-		NumBans       int           `json:"numBans"`
-		TheirTeamBans []interface{} `json:"theirTeamBans"`
-	} `json:"bans"`
-	BenchChampionIds   []interface{} `json:"benchChampionIds"`
-	BenchEnabled       bool          `json:"benchEnabled"`
-	BoostableSkinCount int           `json:"boostableSkinCount"`
-	ChatDetails        struct {
-		ChatRoomName     string      `json:"chatRoomName"`
-		ChatRoomPassword interface{} `json:"chatRoomPassword"`
-	} `json:"chatDetails"`
-	Counter              int `json:"counter"`
-	EntitledFeatureState struct {
-		AdditionalRerolls int           `json:"additionalRerolls"`
-		UnlockedSkinIds   []interface{} `json:"unlockedSkinIds"`
-	} `json:"entitledFeatureState"`
-	GameID               int64 `json:"gameId"`
-	HasSimultaneousBans  bool  `json:"hasSimultaneousBans"`
-	HasSimultaneousPicks bool  `json:"hasSimultaneousPicks"`
-	IsCustomGame         bool  `json:"isCustomGame"`
-	IsSpectating         bool  `json:"isSpectating"`
-	LocalPlayerCellID    int   `json:"localPlayerCellId"`
-	LockedEventIndex     int   `json:"lockedEventIndex"`
-	MyTeam               []struct {
-		AssignedPosition    string `json:"assignedPosition"`
-		CellID              int    `json:"cellId"`
-		ChampionID          int    `json:"championId"`
-		ChampionPickIntent  int    `json:"championPickIntent"`
-		EntitledFeatureType string `json:"entitledFeatureType"`
-		SelectedSkinID      int    `json:"selectedSkinId"`
-		Spell1ID            int    `json:"spell1Id"`
-		Spell2ID            int    `json:"spell2Id"`
-		SummonerID          int    `json:"summonerId"`
-		Team                int    `json:"team"`
-		WardSkinID          int    `json:"wardSkinId"`
-	} `json:"myTeam"`
-	RerollsRemaining   int  `json:"rerollsRemaining"`
-	SkipChampionSelect bool `json:"skipChampionSelect"`
-	TheirTeam          []struct {
-		AssignedPosition    string `json:"assignedPosition"`
-		CellID              int    `json:"cellId"`
-		ChampionID          int    `json:"championId"`
-		ChampionPickIntent  int    `json:"championPickIntent"`
-		EntitledFeatureType string `json:"entitledFeatureType"`
-		SelectedSkinID      int    `json:"selectedSkinId"`
-		Spell1ID            int    `json:"spell1Id"`
-		Spell2ID            int    `json:"spell2Id"`
-		SummonerID          int    `json:"summonerId"`
-		Team                int    `json:"team"`
-		WardSkinID          int    `json:"wardSkinId"`
-	} `json:"theirTeam"`
-	Timer struct {
-		AdjustedTimeLeftInPhase int    `json:"adjustedTimeLeftInPhase"`
-		InternalNowInEpochMs    int64  `json:"internalNowInEpochMs"`
-		IsInfinite              bool   `json:"isInfinite"`
-		Phase                   string `json:"phase"`
-		TotalTimeInPhase        int    `json:"totalTimeInPhase"`
-	} `json:"timer"`
-	Trades []interface{} `json:"trades"`
+	Page datatype.RunePage
 }
 
 // Initialize creates DFFClient structure and initialize files/variables
 func Initialize(outTo io.Writer) (client *DFFClient) {
+	var err error
 	client = createDFFClient(outTo)
 
-	if err := client.readConfig(); err != nil {
-		client.Log.Error(ProjectName + " may not be initialized properly")
+	if err = client.readConfig("config.json"); err != nil {
+		client.Log.Warning(ProjectName + " may not be initialized properly")
 	}
 
-	if err := client.WriteConfig(); err != nil {
+	if err = client.WriteConfig(); err != nil {
 		client.Log.Error("Could not write config file")
 	}
 
+	if err = os.MkdirAll("cache", 0700); err != nil {
+		client.Log.Debug(err)
+		client.Log.Error("Error while creating cache folder")
+	}
+
+	if client.cache, err = cache.RestoreCache(filepath.Join("cache", "cache.bin")); err != nil {
+		client.Log.Debug(err)
+		client.Log.Warning("Could not restore cache")
+		client.cache = cache.NewCache()
+	}
+
 	// Read/Download/Sync mandatory files if necessary
-	if err := client.checkFiles(); err != nil {
+	if err = client.checkFiles(); err != nil {
 		client.Log.Error("At least one mandatory file is missing")
 	}
 
@@ -391,6 +103,7 @@ func createDFFClient(outTo io.Writer) *DFFClient {
 		gameClient: &http.Client{Transport: &http.Transport{
 			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
 		}},
+		cache:       nil, // must be initialized later
 		account:     nil,
 		Debug:       false,
 		Interval:    2,
@@ -404,13 +117,13 @@ func createDFFClient(outTo io.Writer) *DFFClient {
 }
 
 // readConfig reads configuration file if it exist and update variables, or use default config otherwise
-func (client *DFFClient) readConfig() (err error) {
-	if _, err = os.Stat("config.json"); err == nil {
+func (client *DFFClient) readConfig(filename string) (err error) {
+	if _, err = os.Stat(filename); err == nil {
 		var fileBytes []byte
 
-		if fileBytes, err = ioutil.ReadFile("config.json"); err != nil {
+		if fileBytes, err = ioutil.ReadFile(filename); err != nil {
 			client.Log.Debug(err)
-			client.Log.Error("Error while reading config.json")
+			client.Log.Error("Error while reading ", filename)
 			return err
 		}
 
@@ -521,16 +234,16 @@ func (client *DFFClient) requestApi(command *string) io.ReadCloser {
 // isInChampSelect returns true if the user is currently in a champion select phase, false otherwise
 func (client *DFFClient) isInChampSelect() (bool, error) {
 	command := "/lol-champ-select/v1/session"
-	var data ChampSelect
+	var champSelect datatype.ChampSelect
 
-	err := json.NewDecoder(client.requestApi(&command)).Decode(&data)
+	err := json.NewDecoder(client.requestApi(&command)).Decode(&champSelect)
 	if err != nil {
 		client.Log.Debug(err)
 		client.Log.Error("Error while decoding API response")
 		return false, err
 	}
 
-	return float64(data.Timer.AdjustedTimeLeftInPhase) > client.Interval, err
+	return float64(champSelect.Timer.AdjustedTimeLeftInPhase) > client.Interval, err
 }
 
 // getAccInfo returns login information
@@ -577,7 +290,7 @@ func (client *DFFClient) checkIsInGame() (bool, error) {
 // getQueueId returns the type of the game (normal, urf, aram, etc)
 func (client *DFFClient) getQueueId() (int, error) {
 	command := "/lol-gameflow/v1/gameflow-metadata/player-status"
-	var queueInfo QueueInfo
+	var queueInfo datatype.QueueInfo
 
 	err := json.NewDecoder(client.requestApi(&command)).Decode(&queueInfo)
 	if err != nil {
@@ -611,6 +324,7 @@ func (client *DFFClient) deleteRunePageWithId(runePageId int) (bool, error) {
 	return resp.StatusCode == http.StatusNoContent, nil
 }
 
+// TODO: Add caching
 // setItems sets an item page
 func (client *DFFClient) setItems(doc *soup.Root, champId int, gameType *string) (bool, error) {
 	if !client.EnableItem {
@@ -619,25 +333,25 @@ func (client *DFFClient) setItems(doc *soup.Root, champId int, gameType *string)
 	builds := (*doc).FindAll("tr", "class", "champion-overview__row")
 	blockCnt := len((*doc).FindAll("tr", "class", "champion-overview__row--first")) + 1
 
-	blockList := make([]ItemBlock, blockCnt)
+	blockList := make([]datatype.ItemBlock, blockCnt)
 	otherItemSet := make(map[string]bool)
 	willBeAdded := 0
 	i := 0
 	for _, build := range builds {
 		if strings.HasSuffix(build.Attrs()["class"], "champion-overview__row--first") {
 			items := build.FindAll("li", "class", "champion-stats__list__item")
-			itemList := make([]Item, len(items))
+			itemList := make([]datatype.Item, len(items))
 			for j, img := range items {
 				str := img.Find("img").Attrs()["src"]
 				str = str[strings.LastIndex(str, "/")+1 : strings.Index(str, ".png")]
-				newItem := Item{
+				newItem := datatype.Item{
 					Count: 1,
 					ID:    str,
 				}
 				otherItemSet[str] = false
 				itemList[j] = newItem
 			}
-			newItemBlock := ItemBlock{
+			newItemBlock := datatype.ItemBlock{
 				HideIfSummonerSpell: "",
 				Items:               itemList,
 				ShowIfSummonerSpell: "",
@@ -658,16 +372,16 @@ func (client *DFFClient) setItems(doc *soup.Root, champId int, gameType *string)
 		}
 	}
 
-	ward := Item{
+	ward := datatype.Item{
 		Count: 1,
 		ID:    "3340",
 	}
 
 	blockList[0].Items = append(blockList[0].Items, ward)
 
-	consumable := ItemBlock{
+	consumable := datatype.ItemBlock{
 		HideIfSummonerSpell: "",
-		Items: []Item{
+		Items: []datatype.Item{
 			{
 				Count: 1,
 				ID:    "2055",
@@ -712,12 +426,12 @@ func (client *DFFClient) setItems(doc *soup.Root, champId int, gameType *string)
 	client.Log.Debug("Total number of items:", len(otherItemSet))
 	client.Log.Debug("Count of items that will be added:", willBeAdded)
 
-	itemList := make([]Item, willBeAdded)
+	itemList := make([]datatype.Item, willBeAdded)
 	idx := 0
 
 	for otherItem := range otherItemSet {
 		if otherItemSet[otherItem] {
-			newItem := Item{
+			newItem := datatype.Item{
 				Count: 1,
 				ID:    otherItem,
 			}
@@ -726,7 +440,7 @@ func (client *DFFClient) setItems(doc *soup.Root, champId int, gameType *string)
 		}
 	}
 
-	newItemBlock := ItemBlock{
+	newItemBlock := datatype.ItemBlock{
 		HideIfSummonerSpell: "",
 		Items:               itemList,
 		ShowIfSummonerSpell: "",
@@ -736,9 +450,9 @@ func (client *DFFClient) setItems(doc *soup.Root, champId int, gameType *string)
 	blockList[i] = newItemBlock
 	i++
 
-	itemPage := ItemPage{
+	itemPage := datatype.ItemPage{
 		AccountID: client.account.AccountID,
-		ItemSets: []ItemSet{
+		ItemSets: []datatype.ItemSet{
 			{
 				AssociatedChampions: []int{champId},
 				AssociatedMaps:      []int{11, 12},
@@ -786,6 +500,7 @@ func (client *DFFClient) setItems(doc *soup.Root, champId int, gameType *string)
 	return resp.StatusCode == http.StatusCreated, err
 }
 
+// TODO: Add caching
 // setSpells sets spells
 func (client *DFFClient) setSpells(doc *soup.Root) (bool, error) {
 	if !client.EnableSpell {
@@ -857,7 +572,7 @@ func (client *DFFClient) setSpells(doc *soup.Root) (bool, error) {
 		spellKeyList[1] = 4
 	}
 
-	spells := Spells{
+	spells := datatype.Spells{
 		Spell1ID: spellKeyList[0],
 		Spell2ID: spellKeyList[1],
 	}
@@ -885,8 +600,9 @@ func (client *DFFClient) setSpells(doc *soup.Root) (bool, error) {
 	return resp.StatusCode == http.StatusNoContent, nil
 }
 
+// TODO: Add caching
 // setRunePage set a rune page
-func (client *DFFClient) setRunePage(page RunePage) (bool, error) {
+func (client *DFFClient) setRunePage(page datatype.RunePage) (bool, error) {
 	command := "/lol-perks/v1/pages"
 
 	if ok, err := client.delRunePage(); !ok || err != nil {
@@ -924,8 +640,8 @@ func (client *DFFClient) setRunePage(page RunePage) (bool, error) {
 
 // delRunePage deletes a rune page created by DFF, or the first rune page
 func (client *DFFClient) delRunePage() (deleted bool, err error) {
-	var runePages RunePages
-	var runePageCnt RunePageCount
+	var runePages datatype.RunePages
+	var runePageCnt datatype.RunePageCount
 
 	command := "/lol-perks/v1/pages"
 	if err = json.NewDecoder(client.requestApi(&command)).Decode(&runePages); err != nil {
@@ -963,6 +679,7 @@ func (client *DFFClient) delRunePage() (deleted bool, err error) {
 	return deleted, nil
 }
 
+// TODO: Add caching
 // setRunePageHelper will parse runes and make a RuneNamePage structure
 func (client *DFFClient) setRunePageHelper(doc *soup.Root, gameType *string) ([]RuneNamePage, [][]string) {
 	if !client.EnableRune {
@@ -1043,7 +760,7 @@ func (client *DFFClient) setRunePageHelper(doc *soup.Root, gameType *string) ([]
 			runeList[len(imgs)+i], _ = strconv.Atoi(str)
 		}
 
-		runeInfo[x].Page = RunePage{
+		runeInfo[x].Page = datatype.RunePage{
 			AutoModifiedSelections: make([]interface{}, 0),
 			Current:                true,
 			ID:                     0,
@@ -1100,16 +817,16 @@ func (client *DFFClient) downloadFile(url string) error {
 
 func (client *DFFClient) getChampId() (champId int, err error) {
 	command := "/lol-champ-select/v1/session"
-	var data ChampSelect
+	var champSelect datatype.ChampSelect
 
-	if err = json.NewDecoder(client.requestApi(&command)).Decode(&data); err != nil {
+	if err = json.NewDecoder(client.requestApi(&command)).Decode(&champSelect); err != nil {
 		client.Log.Debug(err)
 		client.Log.Error("Error while getting champion ID")
 		return 0, err
 	}
 
 	// Find current user's champion ID
-	for _, member := range data.MyTeam {
+	for _, member := range champSelect.MyTeam {
 		if member.SummonerID == client.account.SummonerID {
 			champId = member.ChampionID
 			break
@@ -1119,28 +836,28 @@ func (client *DFFClient) getChampId() (champId int, err error) {
 	return champId, err
 }
 
-// TODO: remove panic, code review
+// TODO: remove panic, code review, add caching
 func (client *DFFClient) getRunes(queueId int, champId int, champLabel *widget.Label) ([][4]string, []RuneNamePage, [][]string) {
 	command := "/lol-champions/v1/inventories/" + strconv.Itoa(client.account.SummonerID) + "/champions/" + strconv.Itoa(champId)
-	var data Champion
+	var champion datatype.Champion
 	var gameType, url string
 	var posUrlList [][4]string = nil
 	var runeNamePages []RuneNamePage = nil
 	var runeDetails [][]string
 
-	err := json.NewDecoder(client.requestApi(&command)).Decode(&data)
+	err := json.NewDecoder(client.requestApi(&command)).Decode(&champion)
 	if err != nil {
 		client.Log.Debug(err)
 		client.Log.Error("Error while getting runes")
 	}
-	champLabel.SetText(data.Alias)
-	client.Log.Debug("Selected Champion: ", data.Alias)
+	champLabel.SetText(champion.Alias)
+	client.Log.Debug("Selected Champion: ", champion.Alias)
 
 	// URF, ARURF
 	if queueId == 900 {
 		gameType = "URF"
 		client.Log.Info("ULTRA RAPID FIRE MODE IS ON!!!")
-		url = "https://op.gg/urf/" + data.Alias + "/statistics"
+		url = "https://op.gg/urf/" + champion.Alias + "/statistics"
 		soup.Cookie("customLocale", client.Language)
 		resp, err := soup.Get(url)
 		if err != nil {
@@ -1156,7 +873,7 @@ func (client *DFFClient) getRunes(queueId int, champId int, champLabel *widget.L
 	} else if queueId == 450 {
 		gameType = "ARAM"
 		client.Log.Info("ARAM MODE IS ON!!!")
-		url = "https://op.gg/aram/" + data.Alias + "/statistics"
+		url = "https://op.gg/aram/" + champion.Alias + "/statistics"
 		soup.Cookie("customLocale", client.Language)
 		resp, err := soup.Get(url)
 		if err != nil {
@@ -1170,7 +887,7 @@ func (client *DFFClient) getRunes(queueId int, champId int, champLabel *widget.L
 		client.setSpells(&doc)
 	} else {
 		// Can add region here
-		url = "https://op.gg/champion/" + data.Alias
+		url = "https://op.gg/champion/" + champion.Alias
 		soup.Cookie("customLocale", client.Language)
 		resp, err := soup.Get(url)
 		if err != nil {
@@ -1233,7 +950,11 @@ func (client *DFFClient) checkFiles() (err error) {
 	leagueVersion := version[0]
 
 	if _, err = os.Stat("./data"); os.IsNotExist(err) {
-		_ = os.Mkdir("./data", 0700)
+		if err = os.MkdirAll(filepath.Join(".", "data"), 0700); err != nil {
+			client.Log.Debug(err)
+			client.Log.Error("Error while downloading a file")
+		}
+
 		// Summoner spells
 		client.downloadFile("https://ddragon.leagueoflegends.com/cdn/" + leagueVersion + "/data/en_US/" + "summoner.json")
 		// Items
@@ -1280,8 +1001,17 @@ func (client *DFFClient) checkFiles() (err error) {
 	return err
 }
 
-// TODO: remove panic, code review
+// TODO: remove panic, code review, add caching
 func (client *DFFClient) Run(window fyne.Window, status *widget.Label, p *widget.Select, champLabel *widget.Label, runeSelect *widget.Select) {
+	defer func() {
+		err := client.cache.SaveCache(filepath.Join("cache", "cache.bin"))
+		if err != nil {
+			client.Log.Debug(err)
+			client.Log.Error("Error while saving cache")
+			return
+		}
+	}()
+
 	var err error
 
 	status.SetText("Starting...")
