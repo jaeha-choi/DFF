@@ -250,14 +250,28 @@ func (client *DFFClient) isInChampSelect() (bool, error) {
 func (client *DFFClient) getAccInfo() (err error) {
 	command := "/lol-summoner/v1/current-summoner"
 
+	req, err := http.NewRequest("GET", client.apiProtocol+"://127.0.0.1:"+client.apiPort+(command), nil)
+	if err != nil {
+		client.Log.Debug(err)
+		client.Log.Error("Error encountered while requesting information")
+		return err
+	}
+	req.SetBasicAuth("riot", client.apiPass)
+
+	var resp *http.Response
 	// Repeat until API is functional
-	reader := client.requestApi(&command)
-	for reader == nil {
-		reader = client.requestApi(&command)
-		time.Sleep(time.Duration(client.Interval) * time.Second)
+	for {
+		if resp, err = client.gameClient.Do(req); err == nil && resp.StatusCode == 200 {
+			break
+		}
+		client.Log.Debug(err)
+		if resp != nil {
+			client.Log.Debug("Account Info Status code: ", resp.StatusCode)
+		}
+		time.Sleep(1 * time.Second)
 	}
 
-	if err = json.NewDecoder(reader).Decode(&client.account); err != nil {
+	if err = json.NewDecoder(resp.Body).Decode(&client.account); err != nil {
 		client.Log.Debug(err)
 		client.Log.Error("Error while decoding account information")
 		return err
@@ -274,6 +288,7 @@ func (client *DFFClient) getAccInfo() (err error) {
 	return nil
 }
 
+// TODO: Need to find a better API for this operation
 // checkIsInGame returns true if a user is currently in a game, false otherwise
 func (client *DFFClient) checkIsInGame() (bool, error) {
 	command := "/riotclient/ux-state"
@@ -1004,7 +1019,9 @@ func (client *DFFClient) checkFiles() (err error) {
 // TODO: remove panic, code review, add caching
 func (client *DFFClient) Run(window fyne.Window, status *widget.Label, p *widget.Select, champLabel *widget.Label, runeSelect *widget.Select) {
 	defer func() {
+		client.Log.Debug("Saving cache...")
 		err := client.cache.SaveCache(filepath.Join("cache", "cache.bin"))
+		client.Log.Debug("Cache saved")
 		if err != nil {
 			client.Log.Debug(err)
 			client.Log.Error("Error while saving cache")
@@ -1015,6 +1032,7 @@ func (client *DFFClient) Run(window fyne.Window, status *widget.Label, p *widget
 	var err error
 
 	status.SetText("Starting...")
+	champLabel.SetText("Not selected")
 
 	if err = client.readLockFile(); err != nil {
 		status.SetText("Error. Check log")
@@ -1159,7 +1177,7 @@ func (client *DFFClient) Run(window fyne.Window, status *widget.Label, p *widget
 
 	var isInGame = true
 	for isInGame {
-		time.Sleep(1 * time.Minute)
+		time.Sleep(30 * time.Second)
 		client.Log.Debug("In game: ", isInGame)
 		if isInGame, err = client.checkIsInGame(); err != nil {
 			status.SetText("Error. Check log")
