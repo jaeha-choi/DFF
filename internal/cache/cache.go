@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"bytes"
 	"encoding/gob"
 	"github.com/jaeha-choi/DFF/internal/datatype"
 	"os"
@@ -34,13 +35,18 @@ type Cache struct {
 	Head     *Node
 	Tail     *Node
 	Capacity int
+	Size     int
 	Existing map[string]*Node
 }
 
 type Node struct {
+	Next  *Node
+	Prev  *Node
+	Value *NodeValue
+}
+
+type NodeValue struct {
 	Key     string
-	Next    *Node
-	Prev    *Node
 	URF     *CachedData
 	ARAM    *CachedData
 	Default []*CachedData
@@ -63,6 +69,7 @@ func NewCache() *Cache {
 	tail.Prev = head
 
 	return &Cache{
+		Size:     0,
 		Head:     head,
 		Tail:     tail,
 		Existing: make(map[string]*Node, CAPACITY),
@@ -102,7 +109,7 @@ func (c *Cache) SaveCache(filename string) (err error) {
 }
 
 // Get retrieves the cached data
-func (c *Cache) Get(name string, mode GameMode, lane Position) (data *CachedData) {
+func (c *Cache) Get(name string, mode GameMode, position Position) (data *CachedData) {
 	var node *Node
 	var exist bool
 
@@ -111,22 +118,22 @@ func (c *Cache) Get(name string, mode GameMode, lane Position) (data *CachedData
 	}
 
 	if mode == URF {
-		data = node.URF
+		data = node.Value.URF
 	} else if mode == ARAM {
-		data = node.ARAM
+		data = node.Value.ARAM
 	} else if mode == DEFAULT {
-		data = node.Default[lane]
+		data = node.Value.Default[position]
 	}
 
 	if data != nil {
 		// If expiration date passed, remove data
 		if t := time.Now().Sub(data.CreationTime); t >= time.Hour*24*EXPIRATION {
 			if mode == URF {
-				node.URF = nil
+				node.Value.URF = nil
 			} else if mode == ARAM {
-				node.ARAM = nil
+				node.Value.ARAM = nil
 			} else if mode == DEFAULT {
-				node.Default[lane] = nil
+				node.Value.Default[position] = nil
 			}
 			data = nil
 		}
@@ -146,7 +153,7 @@ func (c *Cache) Get(name string, mode GameMode, lane Position) (data *CachedData
 }
 
 // Put updates the cache
-func (c *Cache) Put(name string, mode GameMode, lane Position, data *CachedData) {
+func (c *Cache) Put(name string, mode GameMode, position Position, data *CachedData) {
 	var node *Node
 	var exist bool
 
@@ -156,14 +163,64 @@ func (c *Cache) Put(name string, mode GameMode, lane Position, data *CachedData)
 
 	if node, exist = c.Existing[name]; !exist || node == nil {
 		node = &Node{
-			Key:     name,
-			URF:     nil,
-			ARAM:    nil,
-			Default: make([]*CachedData, 5),
-			Next:    nil,
-			Prev:    nil,
+			Value: &NodeValue{
+				Key: name,
+				URF: &CachedData{
+					CreationTime: time.Time{},
+					Version:      "",
+					Spells:       datatype.Spells{},
+					RunePages:    datatype.RunePages{},
+					ItemPages:    make([]datatype.ItemPage, 4),
+				},
+				ARAM: &CachedData{
+					CreationTime: time.Time{},
+					Version:      "",
+					Spells:       datatype.Spells{},
+					RunePages:    datatype.RunePages{},
+					ItemPages:    make([]datatype.ItemPage, 4),
+				},
+				//Default: make([]*CachedData, 5),
+				Default: []*CachedData{
+					{
+						CreationTime: time.Time{},
+						Version:      "",
+						Spells:       datatype.Spells{},
+						RunePages:    datatype.RunePages{},
+						ItemPages:    make([]datatype.ItemPage, 4),
+					},
+					{
+						CreationTime: time.Time{},
+						Version:      "",
+						Spells:       datatype.Spells{},
+						RunePages:    datatype.RunePages{},
+						ItemPages:    make([]datatype.ItemPage, 4),
+					},
+					{
+						CreationTime: time.Time{},
+						Version:      "",
+						Spells:       datatype.Spells{},
+						RunePages:    datatype.RunePages{},
+						ItemPages:    make([]datatype.ItemPage, 4),
+					},
+					{
+						CreationTime: time.Time{},
+						Version:      "",
+						Spells:       datatype.Spells{},
+						RunePages:    datatype.RunePages{},
+						ItemPages:    make([]datatype.ItemPage, 4),
+					},
+					{
+						CreationTime: time.Time{},
+						Version:      "",
+						Spells:       datatype.Spells{},
+						RunePages:    datatype.RunePages{},
+						ItemPages:    make([]datatype.ItemPage, 4),
+					},
+				},
+			},
 		}
 		c.Existing[name] = node
+		c.Size++
 	} else {
 		// If already exist, remove from the linked list before adding to the front
 		node.Prev.Next = node.Next
@@ -178,19 +235,91 @@ func (c *Cache) Put(name string, mode GameMode, lane Position, data *CachedData)
 	c.Head.Next = node
 
 	if mode == URF {
-		node.URF = data
+		node.Value.URF = data
 	} else if mode == ARAM {
-		node.ARAM = data
+		node.Value.ARAM = data
 	} else if mode == DEFAULT {
-		node.Default[lane] = data
+		node.Value.Default[position] = data
 	}
 }
 
 // delLast deletes the last node in the cache (excluding head/tail)
 func (c *Cache) delLast() {
 	if len(c.Existing) > 0 {
-		delete(c.Existing, c.Tail.Prev.Key)
+		delete(c.Existing, c.Tail.Prev.Value.Key)
 		c.Tail.Prev.Prev.Next = c.Tail
 		c.Tail.Prev = c.Tail.Prev.Prev
+		c.Size--
 	}
+}
+
+// MarshalBinary implements the encoding.BinaryMarshaler interface.
+func (c Cache) MarshalBinary() (data []byte, err error) {
+	var buf bytes.Buffer
+	encoder := gob.NewEncoder(&buf)
+
+	if err = encoder.Encode(&c.Capacity); err != nil {
+		return nil, err
+	}
+
+	if err = encoder.Encode(&c.Size); err != nil {
+		return nil, err
+	}
+
+	curr := c.Head.Next
+	for i := 0; i < c.Size; i++ {
+		if err = encoder.Encode(&curr.Value); err != nil {
+			return nil, err
+		}
+		curr = curr.Next
+	}
+
+	return buf.Bytes(), err
+}
+
+// UnmarshalBinary implements the encoding.BinaryUnmarshaler interface.
+func (c *Cache) UnmarshalBinary(data []byte) (err error) {
+	decoder := gob.NewDecoder(bytes.NewReader(data))
+
+	if err = decoder.Decode(&c.Capacity); err != nil {
+		return err
+	}
+
+	if err = decoder.Decode(&c.Size); err != nil {
+		return err
+	}
+
+	c.Head = &Node{}
+	c.Tail = &Node{}
+
+	c.Existing = make(map[string]*Node, CAPACITY)
+
+	curr := c.Head
+	prev := curr
+	for i := 0; i < c.Size; i++ {
+		curr.Next = &Node{}
+		curr = curr.Next
+		curr.Prev = prev
+		prev = curr
+		if err = decoder.Decode(&curr.Value); err != nil {
+			return err
+		}
+		c.Existing[curr.Value.Key] = curr
+	}
+
+	curr.Next = c.Tail
+	c.Tail.Prev = curr
+
+	return err
+}
+
+// String implements the fmt.Stringer interface.
+func (c *Cache) String() (str string) {
+	curr := c.Head.Next
+	for i := 0; i < c.Size; i++ {
+		str += curr.Value.Key + "\t"
+		curr = curr.Next
+	}
+
+	return
 }
