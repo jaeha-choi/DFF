@@ -130,6 +130,7 @@ func main() {
 			roleSelect,
 			runeSelect))
 
+	w.Resize(fyne.NewSize(0, 0))
 	w.SetFixedSize(true)
 	w.ShowAndRun()
 }
