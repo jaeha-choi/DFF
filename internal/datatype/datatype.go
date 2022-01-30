@@ -1,10 +1,26 @@
 package datatype
 
+type GameMode int
+
+const (
+	DEFAULT GameMode = 0
+	ARAM    GameMode = 450
+	URF     GameMode = 900
+)
+
 type Spells struct {
 	//SelectedSkinID int32 `json:"selectedSkinId"`
 	Spell1ID int64 `json:"spell1Id"`
 	Spell2ID int64 `json:"spell2Id"`
 	//WardSkinID     int64 `json:"wardSkinId"`
+}
+
+type DFFRunePage struct {
+	Name      string
+	PickRate  string
+	WinRate   string
+	SampleCnt string
+	Page      RunePage
 }
 
 type RunePageCount struct {

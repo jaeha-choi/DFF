@@ -14,17 +14,11 @@ const CAPACITY int = 16
 // EXPIRATION data expiration time in days
 const EXPIRATION = 7
 
-type GameMode int
 type Position int
 
 const (
-	DEFAULT GameMode = iota
-	ARAM
-	URF
-)
-
-const (
-	TOP Position = iota
+	NONE Position = iota - 1
+	TOP
 	JUNGLE
 	MID
 	ADC
@@ -46,18 +40,23 @@ type Node struct {
 }
 
 type NodeValue struct {
-	Key     string
-	URF     *CachedData
-	ARAM    *CachedData
-	Default []*CachedData
+	Key                string
+	URF                CachedData
+	ARAM               CachedData
+	Default            []CachedData
+	AvailablePositions []Position
+	DefaultPosition    Position
 }
 
 type CachedData struct {
-	CreationTime time.Time
-	Version      string
-	Spells       datatype.Spells
-	RunePages    datatype.RunePages
-	ItemPages    []datatype.ItemPage
+	CreationTime     time.Time
+	Version          string
+	PositionPickRate string
+	URL              string
+
+	Spells    datatype.Spells
+	RunePages []datatype.DFFRunePage
+	ItemPages datatype.ItemPage
 }
 
 // NewCache create new cache
@@ -108,41 +107,28 @@ func (c *Cache) SaveCache(filename string) (err error) {
 	return
 }
 
-// Get retrieves the cached data
-func (c *Cache) Get(name string, mode GameMode, position Position) (data *CachedData) {
-	var node *Node
+func (c *Cache) GetPutNode(name string) (node *Node, isCached bool) {
 	var exist bool
 
 	if node, exist = c.Existing[name]; !exist || node == nil {
-		return nil
-	}
-
-	if mode == URF {
-		data = node.Value.URF
-	} else if mode == ARAM {
-		data = node.Value.ARAM
-	} else if mode == DEFAULT {
-		data = node.Value.Default[position]
-	}
-
-	if data != nil {
-		// If expiration date passed, remove data
-		if t := time.Now().Sub(data.CreationTime); t >= time.Hour*24*EXPIRATION {
-			if mode == URF {
-				node.Value.URF = nil
-			} else if mode == ARAM {
-				node.Value.ARAM = nil
-			} else if mode == DEFAULT {
-				node.Value.Default[position] = nil
-			}
-			data = nil
+		node = &Node{
+			Value: &NodeValue{
+				Key:     name,
+				URF:     CachedData{},
+				ARAM:    CachedData{},
+				Default: make([]CachedData, 5),
+			},
 		}
+		c.Existing[name] = node
+		c.Size++
+	} else {
+		// If already exist, remove from the linked list before adding to the front
+		node.Prev.Next = node.Next
+		node.Next.Prev = node.Prev
+		isCached = true
 	}
 
 	// Move the node to the front
-	node.Prev.Next = node.Next
-	node.Next.Prev = node.Prev
-
 	node.Prev = c.Head
 	node.Next = c.Head.Next
 
@@ -152,95 +138,44 @@ func (c *Cache) Get(name string, mode GameMode, position Position) (data *Cached
 	return
 }
 
-// Put updates the cache
-func (c *Cache) Put(name string, mode GameMode, position Position, data *CachedData) {
+func (c *Cache) GetPut(name string, mode datatype.GameMode, position Position) (data *CachedData, isCached bool) {
 	var node *Node
-	var exist bool
+	node, isCached = c.GetPutNode(name)
 
-	if len(c.Existing) >= c.Capacity {
-		c.delLast()
-	}
-
-	if node, exist = c.Existing[name]; !exist || node == nil {
-		node = &Node{
-			Value: &NodeValue{
-				Key: name,
-				URF: &CachedData{
-					CreationTime: time.Time{},
-					Version:      "",
-					Spells:       datatype.Spells{},
-					RunePages:    datatype.RunePages{},
-					ItemPages:    make([]datatype.ItemPage, 4),
-				},
-				ARAM: &CachedData{
-					CreationTime: time.Time{},
-					Version:      "",
-					Spells:       datatype.Spells{},
-					RunePages:    datatype.RunePages{},
-					ItemPages:    make([]datatype.ItemPage, 4),
-				},
-				//Default: make([]*CachedData, 5),
-				Default: []*CachedData{
-					{
-						CreationTime: time.Time{},
-						Version:      "",
-						Spells:       datatype.Spells{},
-						RunePages:    datatype.RunePages{},
-						ItemPages:    make([]datatype.ItemPage, 4),
-					},
-					{
-						CreationTime: time.Time{},
-						Version:      "",
-						Spells:       datatype.Spells{},
-						RunePages:    datatype.RunePages{},
-						ItemPages:    make([]datatype.ItemPage, 4),
-					},
-					{
-						CreationTime: time.Time{},
-						Version:      "",
-						Spells:       datatype.Spells{},
-						RunePages:    datatype.RunePages{},
-						ItemPages:    make([]datatype.ItemPage, 4),
-					},
-					{
-						CreationTime: time.Time{},
-						Version:      "",
-						Spells:       datatype.Spells{},
-						RunePages:    datatype.RunePages{},
-						ItemPages:    make([]datatype.ItemPage, 4),
-					},
-					{
-						CreationTime: time.Time{},
-						Version:      "",
-						Spells:       datatype.Spells{},
-						RunePages:    datatype.RunePages{},
-						ItemPages:    make([]datatype.ItemPage, 4),
-					},
-				},
-			},
+	if mode == datatype.URF {
+		data = &node.Value.URF
+	} else if mode == datatype.ARAM {
+		data = &node.Value.ARAM
+	} else if mode == datatype.DEFAULT {
+		if position == NONE {
+			position = node.Value.DefaultPosition
 		}
-		c.Existing[name] = node
-		c.Size++
-	} else {
-		// If already exist, remove from the linked list before adding to the front
-		node.Prev.Next = node.Next
-		node.Next.Prev = node.Prev
+		data = &node.Value.Default[position]
 	}
 
-	// Add/Move the node to the front
-	node.Prev = c.Head
-	node.Next = c.Head.Next
-
-	c.Head.Next.Prev = node
-	c.Head.Next = node
-
-	if mode == URF {
-		node.Value.URF = data
-	} else if mode == ARAM {
-		node.Value.ARAM = data
-	} else if mode == DEFAULT {
-		node.Value.Default[position] = data
+	if data != nil {
+		// TODO: Compare game version vs cache version to perform version check
+		// If expiration date passed, remove data
+		if t := time.Now().Sub(data.CreationTime); t >= time.Hour*24*EXPIRATION {
+			if mode == datatype.URF {
+				node.Value.URF = CachedData{}
+				data = &node.Value.URF
+			} else if mode == datatype.ARAM {
+				node.Value.ARAM = CachedData{}
+				data = &node.Value.ARAM
+			} else if mode == datatype.DEFAULT {
+				node.Value.Default[position] = CachedData{}
+				data = &node.Value.Default[position]
+			}
+			isCached = false
+		}
+		if data.RunePages == nil {
+			isCached = false
+		}
 	}
+	//fmt.Println("Using cached data: ", isCached)
+
+	return
 }
 
 // delLast deletes the last node in the cache (excluding head/tail)
