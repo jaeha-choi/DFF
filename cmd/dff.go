@@ -4,6 +4,7 @@ import (
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/app"
 	"fyne.io/fyne/v2/container"
+	"fyne.io/fyne/v2/layout"
 	"fyne.io/fyne/v2/widget"
 	"github.com/jaeha-choi/DFF/internal/core"
 	"github.com/jaeha-choi/DFF/internal/updater"
@@ -104,33 +105,28 @@ func main() {
 		}
 	}()
 
-	///lol-lobby/v1/lobby/availability
-	///lol-lobby/v1/lobby/countdown
-	///riotclient/get_region_locale
+	left := container.NewVBox(
+		widget.NewLabel(core.ProjectName+" "+core.Version),
+		widget.NewLabel("Program Status:"),
+		status,
+		widget.NewLabel("Current Champion:"),
+		selectedChamp,
+	)
+	right := container.NewVBox(
+		checkUpdateButton,
+		container.NewHBox(widget.NewLabel("Debug"), enableDebugging),
+		container.NewHBox(widget.NewLabel("Auto runes"), enableRunesCheck),
+		container.NewHBox(widget.NewLabel("Auto items"), enableItemsCheck),
+		container.NewHBox(widget.NewLabel("Auto spells"), enableSpellCheck),
+		container.NewHBox(widget.NewLabel("Left Flash"), enableDFlash),
+		widget.NewLabel("Polling interval"),
+		sl,
+	)
+	bottom := container.NewVBox(roleSelect, runeSelect)
 
-	w.SetContent(
-		container.NewVBox(
-			container.NewHBox(
-				container.NewVBox(
-					widget.NewLabel(core.ProjectName+" "+core.Version),
-					widget.NewLabel("Program Status:"),
-					status,
-					container.NewHBox(widget.NewLabel("Current Champion:")),
-					selectedChamp),
-				container.NewVBox(
-					checkUpdateButton,
-					container.NewHBox(widget.NewLabel("Debug"), enableDebugging),
-					container.NewHBox(widget.NewLabel("Auto runes"), enableRunesCheck),
-					container.NewHBox(widget.NewLabel("Auto items"), enableItemsCheck),
-					container.NewHBox(widget.NewLabel("Auto spells"), enableSpellCheck),
-					container.NewHBox(widget.NewLabel("Left Flash"), enableDFlash),
-					widget.NewLabel("Polling interval"),
-					sl,
-				)),
-			roleSelect,
-			runeSelect))
+	w.SetContent(container.New(layout.NewBorderLayout(nil, bottom, left, right), bottom, left, right))
 
-	w.Resize(fyne.NewSize(0, 0))
+	w.Resize(fyne.NewSize(350, 400))
 	w.SetFixedSize(true)
 	w.ShowAndRun()
 }
