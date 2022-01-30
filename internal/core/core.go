@@ -22,7 +22,7 @@ import (
 )
 
 const ProjectName string = "DFF!"
-const Version string = "v0.5.4"
+const Version string = "v0.5.5-beta"
 const IssueUrl string = "https://github.com/jaeha-choi/DFF/issues"
 
 type DFFClient struct {
