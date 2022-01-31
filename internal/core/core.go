@@ -338,13 +338,42 @@ func (client *DFFClient) deleteRunePageWithId(runePageId int) (bool, error) {
 
 // retrieveItems sets an item page
 func (client *DFFClient) retrieveItems(doc *soup.Root, cachedData *cache.CachedData, champId int, gameType string) (isSet bool) {
-	builds := (*doc).FindAll("tr", "class", "champion-overview__row")
-	blockCnt := len((*doc).FindAll("tr", "class", "champion-overview__row--first")) + 1
+	skillTreeTable := doc.Find("table", "class", "champion-skill-build__table")
+	skillTree := skillTreeTable.Children()[0].Children()[3]
+	firstThree := make([]string, 3)
+	skillBuild := make([]string, 2)
+	i := 0
+	j := 0
+	for _, elem := range skillTree.Children() {
+		if i < len(firstThree) && len(elem.Children()) > 0 {
+			firstThree[i] = strings.TrimSpace(elem.Text())
+			i++
+		} else if j < len(skillBuild) && len(elem.Children()) > 1 {
+			skillBuild[j] = strings.TrimSpace(elem.Find("span").Text())
+			j++
+		}
+	}
+
+	firstThreeStr := "First 3 skills: " + firstThree[0] + " -> " + firstThree[1] + " -> " + firstThree[2]
+
+	skillSet := map[string]struct{}{"Q": {}, "W": {}, "E": {}}
+	skillBuildStr := "Skill Tree: "
+	for _, s := range skillBuild {
+		skillBuildStr += s + " -> "
+		delete(skillSet, s)
+	}
+	for s := range skillSet {
+		skillBuildStr += s
+		delete(skillSet, s)
+	}
+
+	builds := doc.FindAll("tr", "class", "champion-overview__row")
+	blockCnt := len(doc.FindAll("tr", "class", "champion-overview__row--first")) + 1
 
 	blockList := make([]datatype.ItemBlock, blockCnt)
 	otherItemSet := make(map[string]bool)
 	willBeAdded := 0
-	i := 0
+	i = 0
 	for _, build := range builds {
 		if strings.HasSuffix(build.Attrs()["class"], "champion-overview__row--first") {
 			items := build.FindAll("li", "class", "champion-stats__list__item")
@@ -359,11 +388,15 @@ func (client *DFFClient) retrieveItems(doc *soup.Root, cachedData *cache.CachedD
 				otherItemSet[str] = false
 				itemList[j] = newItem
 			}
+			title := build.Find("th", "class", "champion-overview__sub-header").Text()
+			if i == 0 {
+				title += "  (" + firstThreeStr + ")"
+			}
 			newItemBlock := datatype.ItemBlock{
 				HideIfSummonerSpell: "",
 				Items:               itemList,
 				ShowIfSummonerSpell: "",
-				Type:                build.Find("th", "class", "champion-overview__sub-header").Text(),
+				Type:                title,
 			}
 			blockList[i] = newItemBlock
 			i++
@@ -424,7 +457,7 @@ func (client *DFFClient) retrieveItems(doc *soup.Root, cachedData *cache.CachedD
 			},
 		},
 		ShowIfSummonerSpell: "",
-		Type:                "Consumables",
+		Type:                "Consumables  (" + skillBuildStr + ")",
 	}
 
 	i++
