@@ -909,6 +909,8 @@ func (client *DFFClient) retrieveData(gameMode datatype.GameMode, champion *data
 			}
 			node.Value.DefaultPosition = node.Value.AvailablePositions[0]
 			cacheData, _ = client.cache.GetPut(champion.Alias, datatype.DEFAULT, node.Value.DefaultPosition)
+		} else {
+			cacheData.CreationTime = time.Now()
 		}
 
 		cacheData.RunePages = make([]datatype.DFFRunePage, 4)
