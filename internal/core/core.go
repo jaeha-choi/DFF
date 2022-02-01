@@ -22,7 +22,7 @@ import (
 )
 
 const ProjectName string = "DFF!"
-const Version string = "v0.5.5-beta"
+const Version string = "v0.6.0"
 const IssueUrl string = "https://github.com/jaeha-choi/DFF/issues"
 
 type DFFClient struct {
@@ -74,15 +74,15 @@ func Initialize(outTo io.Writer) (client *DFFClient) {
 		client.Log.Error("Error while creating cache folder")
 	}
 
-	if client.cache, err = cache.RestoreCache(filepath.Join("cache", "cache.bin")); err != nil {
-		client.Log.Debug(err)
-		client.Log.Warning("Could not restore cache")
-		client.cache = cache.NewCache()
-	}
-
 	// Read/Download/Sync mandatory files if necessary
 	if err = client.checkFiles(); err != nil {
 		client.Log.Error("At least one mandatory file is missing")
+	}
+
+	if client.cache, err = cache.RestoreCache(filepath.Join("cache", "cache.bin"), client.gameVersion); err != nil {
+		client.Log.Debug(err)
+		client.Log.Warning("Could not restore cache, creating a new cache")
+		client.cache = cache.NewCache(client.gameVersion)
 	}
 
 	return client
@@ -101,7 +101,6 @@ func createDFFClient(outTo io.Writer) *DFFClient {
 		account:     nil,
 		cache:       nil, // must be initialized later
 		window:      nil,
-		gameVersion: "",
 		Debug:       false,
 		Interval:    2,
 		ClientDir:   "C:/Riot Games/League of Legends/",
@@ -339,6 +338,10 @@ func (client *DFFClient) deleteRunePageWithId(runePageId int) (bool, error) {
 // retrieveItems sets an item page
 func (client *DFFClient) retrieveItems(doc *soup.Root, cachedData *cache.CachedData, champId int, gameType string) (isSet bool) {
 	skillTreeTable := doc.Find("table", "class", "champion-skill-build__table")
+	if skillTreeTable.Error != nil {
+		return false
+	}
+
 	skillTree := skillTreeTable.Children()[0].Children()[3]
 	firstThree := make([]string, 3)
 	skillBuild := make([]string, 2)
@@ -368,6 +371,9 @@ func (client *DFFClient) retrieveItems(doc *soup.Root, cachedData *cache.CachedD
 	}
 
 	builds := doc.FindAll("tr", "class", "champion-overview__row")
+	if builds == nil {
+		return false
+	}
 	blockCnt := len(doc.FindAll("tr", "class", "champion-overview__row--first")) + 1
 
 	blockList := make([]datatype.ItemBlock, blockCnt)
@@ -645,6 +651,9 @@ func (client *DFFClient) delRunePage() (deleted bool, err error) {
 // retrieveRunes will parse runes and make a RuneNamePage structure
 func (client *DFFClient) retrieveRunes(doc *soup.Root, cachedData *cache.CachedData, gameType string) (isSet bool) {
 	runeDetailsDoc := (*doc).FindAll("span", "class", "pick-ratio__text")
+	if runeDetailsDoc == nil {
+		return false
+	}
 
 	// Getting Pick rate/Win rate/Sample count
 	var pr, wr, sample string
@@ -834,59 +843,92 @@ func (client *DFFClient) retrieveData(gameMode datatype.GameMode, champion *data
 			// Find champion positions
 			positions := doc.FindAll("li", "class", "champion-stats-header__position")
 			node, _ := client.cache.GetPutNode(champion.Alias)
-			node.Value.AvailablePositions = make([]cache.Position, len(positions))
 
-			for i, pos := range positions {
-				link := "https://op.gg" + pos.Find("a").Attrs()["href"]
-				roleStr := strings.TrimSpace(pos.Find("span", "class", "champion-stats-header__position__role").Text())
-				rate := pos.Find("span", "class", "champion-stats-header__position__rate").Text()
+			// "RIP" champions
+			if len(positions) == 0 {
+				client.Log.Info(champion.Alias, " does not have enough sample count.")
+				node.Value.AvailablePositions = make([]cache.Position, 5)
+				baseUrl := "https://na.op.gg/champion/" + champion.Alias + "/statistics/"
 
-				client.Log.Debug(i, ". "+roleStr+": ", rate)
-
-				var role cache.Position
-
-				switch roleStr {
-				case "Top":
-					role = cache.TOP
-				case "Jungle":
-					role = cache.JUNGLE
-				case "Middle":
-					role = cache.MID
-				case "Bottom":
-					role = cache.ADC
-				case "Support":
-					role = cache.SUPPORT
-				default:
-					client.Log.Error("Role changed? Please submit a new issue at " + IssueUrl)
-					return nil, false
+				var currPos cache.Position
+				for i, role := range []string{"top", "jungle", "mid", "adc", "support"} {
+					currPos = cache.TOP + cache.Position(i)
+					node.Value.AvailablePositions[i] = currPos
+					cacheData, _ = client.cache.GetPut(champion.Alias, datatype.DEFAULT, currPos)
+					cacheData.CreationTime = time.Now()
+					cacheData.PositionPickRate = "N/A: Low sample count"
+					cacheData.URL = baseUrl + role
 				}
-				node.Value.AvailablePositions[i] = role
 
-				cacheData, _ = client.cache.GetPut(champion.Alias, datatype.DEFAULT, role)
-				cacheData.CreationTime = time.Now()
-				cacheData.PositionPickRate = rate
-				cacheData.URL = link
+				for i := 0; i < retryCnt; i++ {
+					cacheData, _ = client.cache.GetPut(champion.Alias, datatype.DEFAULT, cache.TOP)
+					resp, err = soup.Get(cacheData.URL)
+					if err == nil {
+						break
+					} else if i == retryCnt-1 {
+						client.Log.Debug(err)
+						client.Log.Error("Couldn't connect to op.gg")
+						return nil, false
+					}
+					time.Sleep(500 * time.Millisecond)
+				}
+				doc = soup.HTMLParse(resp)
+			} else {
+				node.Value.AvailablePositions = make([]cache.Position, len(positions))
+				for i, pos := range positions {
+					link := "https://op.gg" + pos.Find("a").Attrs()["href"]
+					roleStr := strings.TrimSpace(pos.Find("span", "class", "champion-stats-header__position__role").Text())
+					rate := pos.Find("span", "class", "champion-stats-header__position__rate").Text()
+
+					client.Log.Debug(i, ". "+roleStr+": ", rate)
+
+					var role cache.Position
+
+					switch roleStr {
+					case "Top":
+						role = cache.TOP
+					case "Jungle":
+						role = cache.JUNGLE
+					case "Middle":
+						role = cache.MID
+					case "Bottom":
+						role = cache.ADC
+					case "Support":
+						role = cache.SUPPORT
+					default:
+						client.Log.Error("Role changed? Please submit a new issue at " + IssueUrl)
+						return nil, false
+					}
+					node.Value.AvailablePositions[i] = role
+
+					cacheData, _ = client.cache.GetPut(champion.Alias, datatype.DEFAULT, role)
+					cacheData.CreationTime = time.Now()
+					cacheData.PositionPickRate = rate
+					cacheData.URL = link
+				}
 			}
 			node.Value.DefaultPosition = node.Value.AvailablePositions[0]
 			cacheData, _ = client.cache.GetPut(champion.Alias, datatype.DEFAULT, node.Value.DefaultPosition)
 		}
 
-		cacheData.Version = client.gameVersion
 		cacheData.RunePages = make([]datatype.DFFRunePage, 4)
 
 		isSet := client.retrieveRunes(&doc, cacheData, gameType)
 		if !isSet {
-			client.Log.Error("Error while caching rune page")
+			client.Log.Error("Error while retrieving rune page")
+			return nil, false
 		}
 
 		isSet = client.retrieveItems(&doc, cacheData, champion.ID, gameType)
 		if !isSet {
-			client.Log.Error("Error while caching item page")
+			client.Log.Error("Error while retrieving item page")
+			return nil, false
 		}
 
 		isSet = client.retrieveSpells(&doc, cacheData)
 		if !isSet {
-			client.Log.Error("Error while caching spell page")
+			client.Log.Error("Error while retrieving spell page")
+			return nil, false
 		}
 	}
 
@@ -915,7 +957,6 @@ func (client *DFFClient) retrieveData(gameMode datatype.GameMode, champion *data
 			client.Log.Error("Error while setting items")
 			return nil, false
 		}
-
 	}
 
 	if client.EnableSpell {
@@ -940,7 +981,7 @@ func (client *DFFClient) retrieveData(gameMode datatype.GameMode, champion *data
 }
 
 // TODO: remove panic, code review
-// checkFiles checks essential files and syncs if outdated
+// checkFiles performs a version check and checks essential files and syncs if outdated
 func (client *DFFClient) checkFiles() (err error) {
 	var version []string
 
@@ -960,7 +1001,7 @@ func (client *DFFClient) checkFiles() (err error) {
 	}
 
 	// First index contains the latest version (e.g. "12.1.1")
-	leagueVersion := version[0]
+	client.gameVersion = version[0]
 
 	if _, err = os.Stat("./data"); os.IsNotExist(err) {
 		if err = os.MkdirAll(filepath.Join(".", "data"), 0700); err != nil {
@@ -969,15 +1010,15 @@ func (client *DFFClient) checkFiles() (err error) {
 		}
 
 		// Summoner spells
-		client.downloadFile("https://ddragon.leagueoflegends.com/cdn/" + leagueVersion + "/data/en_US/" + "summoner.json")
+		client.downloadFile("https://ddragon.leagueoflegends.com/cdn/" + client.gameVersion + "/data/en_US/" + "summoner.json")
 		// Items
-		//downloadFile("https://ddragon.leagueoflegends.com/cdn/"+ leagueVersion +"/data/en_US/"+"item.json")
+		//downloadFile("https://ddragon.leagueoflegends.com/cdn/"+ client.gameVersion +"/data/en_US/"+"item.json")
 		// Maps
-		//downloadFile("https://ddragon.leagueoflegends.com/cdn/"+ leagueVersion +"/data/en_US/"+"map.json.json")
+		//downloadFile("https://ddragon.leagueoflegends.com/cdn/"+ client.gameVersion +"/data/en_US/"+"map.json.json")
 		// Runes
-		//downloadFile("https://ddragon.leagueoflegends.com/cdn/"+ leagueVersion +"/data/en_US/"+"runesReforged.json")
+		//downloadFile("https://ddragon.leagueoflegends.com/cdn/"+ client.gameVersion +"/data/en_US/"+"runesReforged.json")
 		// Champions
-		//downloadFile("https://ddragon.leagueoflegends.com/cdn/"+ leagueVersion +"/data/en_US/"+"champion.json")
+		//downloadFile("https://ddragon.leagueoflegends.com/cdn/"+ client.gameVersion +"/data/en_US/"+"champion.json")
 	} else if err != nil {
 		var files []fs.FileInfo
 		var ver FileVersion
@@ -1002,12 +1043,12 @@ func (client *DFFClient) checkFiles() (err error) {
 				continue
 			}
 
-			if leagueVersion != ver.Version {
+			if client.gameVersion != ver.Version {
 				//if err = os.Remove("./data/" + file.Name()); err != nil {
 				//	client.log.Debug(err)
 				//	client.log.Error("Error while deleting outdated file: " + file.Name())
 				//}
-				client.downloadFile("https://ddragon.leagueoflegends.com/cdn/" + leagueVersion + "/data/en_US/" + file.Name())
+				client.downloadFile("https://ddragon.leagueoflegends.com/cdn/" + client.gameVersion + "/data/en_US/" + file.Name())
 			}
 		}
 	}
@@ -1097,7 +1138,7 @@ func (client *DFFClient) Run(window fyne.Window, status *widget.Label, p *widget
 			if err != nil {
 				client.Log.Debug(err)
 				client.Log.Error("Error while getting runes")
-				champLabel.SetText("Error. Check log")
+				status.SetText("Error. Check log")
 				if client.window != nil {
 					client.window.RequestFocus()
 				}
@@ -1106,16 +1147,16 @@ func (client *DFFClient) Run(window fyne.Window, status *widget.Label, p *widget
 			status.SetText("Setting...")
 			cachedData, ok := client.retrieveData(gameMode, &champion, champLabel, position)
 			if !ok {
-				champLabel.SetText("Error. Check log")
+				status.SetText("Error. Check log")
 				if client.window != nil {
 					client.window.RequestFocus()
 				}
+			} else {
+				status.SetText("Updated...")
 			}
 			lastRole = position
 
-			status.SetText("Updated...")
-
-			if len(cachedData.RunePages) > 0 {
+			if ok && len(cachedData.RunePages) > 0 {
 				runeSelect.Options = make([]string, len(cachedData.RunePages))
 				for x, elem := range cachedData.RunePages {
 					runeSelect.Options[x] = elem.Name + " PR:" + elem.PickRate + " WR:" + elem.WinRate + " Sample:" + elem.SampleCnt
@@ -1127,7 +1168,7 @@ func (client *DFFClient) Run(window fyne.Window, status *widget.Label, p *widget
 						if name[0]+" "+name[1] == elem.Name {
 							ok, err := client.setRunePage(&elem.Page)
 							if !ok || err != nil {
-								champLabel.SetText("Error. Check log")
+								status.SetText("Error. Check log")
 								if client.window != nil {
 									client.window.RequestFocus()
 								}
