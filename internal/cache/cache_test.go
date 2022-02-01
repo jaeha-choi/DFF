@@ -9,7 +9,7 @@ import (
 )
 
 func TestCache(t *testing.T) {
-	c := NewCache()
+	c := NewCache("version")
 
 	c.GetPut("A", datatype.DEFAULT, ADC)
 	c.GetPut("B", datatype.ARAM, TOP)
@@ -21,7 +21,7 @@ func TestCache(t *testing.T) {
 }
 
 func TestEncode(t *testing.T) {
-	c := NewCache()
+	c := NewCache("version")
 
 	c.GetPut("A", datatype.DEFAULT, MID)
 	c.GetPut("B", datatype.ARAM, JUNGLE)
@@ -35,7 +35,7 @@ func TestEncode(t *testing.T) {
 
 func TestEncodeDecode(t *testing.T) {
 	// Encode
-	c := NewCache()
+	c := NewCache("version")
 
 	c.GetPut("A", datatype.DEFAULT, ADC)
 	c.GetPut("B", datatype.DEFAULT, TOP)
@@ -45,7 +45,7 @@ func TestEncodeDecode(t *testing.T) {
 		t.Error("Incorrect result for TestCache")
 	}
 	cache.CreationTime = time.Now()
-	cache.Version = "VersionD"
+	cache.URL = "someURL"
 	c.GetPut("C", datatype.DEFAULT, JUNGLE)
 
 	var buf bytes.Buffer
@@ -66,13 +66,13 @@ func TestEncodeDecode(t *testing.T) {
 		t.Error("Incorrect result for TestCache")
 	}
 
-	if decoded.Existing["D"].Value.Default[MID].Version != "VersionD" {
+	if decoded.Existing["D"].Value.Default[MID].URL != "someURL" {
 		t.Error("Incorrect result for TestCache")
 	}
 
 	// Get operation affects node order in the linked list
 	cache, isCached = decoded.GetPut("D", datatype.DEFAULT, MID)
-	if isCached && cache.Version != "VersionD" {
+	if isCached && cache.URL != "someURL" {
 		t.Error("Incorrect result for TestCache")
 	}
 

@@ -3,10 +3,15 @@ package cache
 import (
 	"bytes"
 	"encoding/gob"
+	"errors"
 	"github.com/jaeha-choi/DFF/internal/datatype"
 	"os"
 	"time"
 )
+
+// VERSION is used to keep track of cache file versions.
+// If cache structure is edited in any way, this value must be incremented.
+const VERSION uint16 = 1
 
 // CAPACITY is the max allowed number of champions to hold
 const CAPACITY int = 16
@@ -25,12 +30,16 @@ const (
 	SUPPORT
 )
 
+var incompatibleCacheError = errors.New("existing cache is incompatible")
+
 type Cache struct {
-	Head     *Node
-	Tail     *Node
-	Capacity int
-	Size     int
-	Existing map[string]*Node
+	CacheVersion      uint16
+	Capacity          int
+	Size              int
+	GameClientVersion string // Must be updated once game client API is accessible
+	Head              *Node
+	Tail              *Node
+	Existing          map[string]*Node
 }
 
 type Node struct {
@@ -50,7 +59,6 @@ type NodeValue struct {
 
 type CachedData struct {
 	CreationTime     time.Time
-	Version          string
 	PositionPickRate string
 	URL              string
 
@@ -60,7 +68,7 @@ type CachedData struct {
 }
 
 // NewCache create new cache
-func NewCache() *Cache {
+func NewCache(gameVer string) *Cache {
 	head := &Node{}
 	tail := &Node{}
 
@@ -68,25 +76,45 @@ func NewCache() *Cache {
 	tail.Prev = head
 
 	return &Cache{
-		Size:     0,
-		Head:     head,
-		Tail:     tail,
-		Existing: make(map[string]*Node, CAPACITY),
-		Capacity: CAPACITY,
+		CacheVersion:      VERSION,
+		Capacity:          CAPACITY,
+		Size:              0,
+		GameClientVersion: gameVer,
+		Head:              head,
+		Tail:              tail,
+		Existing:          make(map[string]*Node, CAPACITY),
 	}
 }
 
-// RestoreCache restore saved cache
-func RestoreCache(filename string) (cache *Cache, err error) {
+// RestoreCache restore saved cache. If cache is incompatible, returns incompatibleCacheError
+func RestoreCache(filename string, gameVer string) (cache *Cache, err error) {
 	file, err := os.Open(filename)
 	if err != nil {
 		return nil, err
 	}
 	defer file.Close()
 
-	err = gob.NewDecoder(file).Decode(&cache)
+	var cacheVerLocal uint16
+	var gameVerLocal string
 
+	decoder := gob.NewDecoder(file)
+	if err = decoder.Decode(&cacheVerLocal); err != nil {
+		return nil, err
+	}
+
+	if err = decoder.Decode(&gameVerLocal); err != nil {
+		return nil, err
+	}
+
+	// If cache is incompatible, returns incompatibleCacheError
+	if cacheVerLocal != VERSION || gameVerLocal != gameVer {
+		return nil, incompatibleCacheError
+	}
+
+	err = decoder.Decode(&cache)
 	if cache != nil {
+		cache.CacheVersion = cacheVerLocal
+		cache.GameClientVersion = gameVerLocal
 		for len(cache.Existing) >= CAPACITY {
 			cache.delLast()
 		}
@@ -103,7 +131,16 @@ func (c *Cache) SaveCache(filename string) (err error) {
 	}
 	defer file.Close()
 
-	err = gob.NewEncoder(file).Encode(&c)
+	encoder := gob.NewEncoder(file)
+	if err = encoder.Encode(&c.CacheVersion); err != nil {
+		return err
+	}
+
+	if err = encoder.Encode(&c.GameClientVersion); err != nil {
+		return err
+	}
+
+	err = encoder.Encode(&c)
 	return
 }
 
@@ -154,7 +191,6 @@ func (c *Cache) GetPut(name string, mode datatype.GameMode, position Position) (
 	}
 
 	if data != nil {
-		// TODO: Compare game version vs cache version to perform version check
 		// If expiration date passed, remove data
 		if t := time.Now().Sub(data.CreationTime); t >= time.Hour*24*EXPIRATION {
 			if mode == datatype.URF {
