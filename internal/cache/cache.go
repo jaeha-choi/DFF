@@ -6,29 +6,19 @@ import (
 	"errors"
 	"github.com/jaeha-choi/DFF/internal/datatype"
 	"os"
+	"strconv"
 	"time"
 )
 
-// VERSION is used to keep track of cache file versions.
+// Version is used to keep track of cache file versions.
 // If cache structure is edited in any way, this value must be incremented.
-const VERSION uint16 = 1
+const Version uint16 = 2
 
-// CAPACITY is the max allowed number of champions to hold
-const CAPACITY int = 16
+// Capacity is the max allowed number of champions to hold
+const Capacity int = 16
 
-// EXPIRATION data expiration time in days
-const EXPIRATION = 7
-
-type Position int
-
-const (
-	NONE Position = iota - 1
-	TOP
-	JUNGLE
-	MID
-	ADC
-	SUPPORT
-)
+// Expiration data expiration time in days
+const Expiration = 7
 
 var incompatibleCacheError = errors.New("existing cache is incompatible")
 
@@ -39,7 +29,7 @@ type Cache struct {
 	GameClientVersion string // Must be updated once game client API is accessible
 	Head              *Node
 	Tail              *Node
-	Existing          map[string]*Node
+	Existing          map[int]*Node
 }
 
 type Node struct {
@@ -49,18 +39,15 @@ type Node struct {
 }
 
 type NodeValue struct {
-	Key                string
-	URF                CachedData
-	ARAM               CachedData
-	Default            []CachedData
-	AvailablePositions []Position
-	DefaultPosition    Position
+	Key     int
+	URF     CachedData
+	ARAM    CachedData
+	Default []CachedData
 }
 
 type CachedData struct {
-	CreationTime     time.Time
-	PositionPickRate string
-	URL              string
+	CreationTime time.Time
+	URL          string
 
 	Spells    datatype.Spells
 	RunePages []datatype.DFFRunePage
@@ -76,13 +63,13 @@ func NewCache(gameVer string) *Cache {
 	tail.Prev = head
 
 	return &Cache{
-		CacheVersion:      VERSION,
-		Capacity:          CAPACITY,
+		CacheVersion:      Version,
+		Capacity:          Capacity,
 		Size:              0,
 		GameClientVersion: gameVer,
 		Head:              head,
 		Tail:              tail,
-		Existing:          make(map[string]*Node, CAPACITY),
+		Existing:          make(map[int]*Node, Capacity),
 	}
 }
 
@@ -107,7 +94,7 @@ func RestoreCache(filename string, gameVer string) (cache *Cache, err error) {
 	}
 
 	// If cache is incompatible, returns incompatibleCacheError
-	if cacheVerLocal != VERSION || gameVerLocal != gameVer {
+	if cacheVerLocal != Version || gameVerLocal != gameVer {
 		return nil, incompatibleCacheError
 	}
 
@@ -115,7 +102,7 @@ func RestoreCache(filename string, gameVer string) (cache *Cache, err error) {
 	if cache != nil {
 		cache.CacheVersion = cacheVerLocal
 		cache.GameClientVersion = gameVerLocal
-		for len(cache.Existing) >= CAPACITY {
+		for len(cache.Existing) >= Capacity {
 			cache.delLast()
 		}
 	}
@@ -144,19 +131,19 @@ func (c *Cache) SaveCache(filename string) (err error) {
 	return
 }
 
-func (c *Cache) GetPutNode(name string) (node *Node, isCached bool) {
+func (c *Cache) GetPutNode(id int) (node *Node, isCached bool) {
 	var exist bool
 
-	if node, exist = c.Existing[name]; !exist || node == nil {
+	if node, exist = c.Existing[id]; !exist || node == nil {
 		node = &Node{
 			Value: &NodeValue{
-				Key:     name,
+				Key:     id,
 				URF:     CachedData{},
 				ARAM:    CachedData{},
 				Default: make([]CachedData, 5),
 			},
 		}
-		c.Existing[name] = node
+		c.Existing[id] = node
 		c.Size++
 	} else {
 		// If already exist, remove from the linked list before adding to the front
@@ -175,31 +162,28 @@ func (c *Cache) GetPutNode(name string) (node *Node, isCached bool) {
 	return
 }
 
-func (c *Cache) GetPut(name string, mode datatype.GameMode, position Position) (data *CachedData, isCached bool) {
+func (c *Cache) GetPut(id int, mode datatype.GameMode, position Position) (data *CachedData, isCached bool) {
 	var node *Node
-	node, isCached = c.GetPutNode(name)
+	node, isCached = c.GetPutNode(id)
 
-	if mode == datatype.URF {
+	if mode == datatype.Urf {
 		data = &node.Value.URF
-	} else if mode == datatype.ARAM {
+	} else if mode == datatype.Aram {
 		data = &node.Value.ARAM
-	} else if mode == datatype.DEFAULT {
-		if position == NONE {
-			position = node.Value.DefaultPosition
-		}
+	} else if mode == datatype.Default {
 		data = &node.Value.Default[position]
 	}
 
 	if data != nil {
 		// If expiration date passed, remove data
-		if t := time.Now().Sub(data.CreationTime); t >= time.Hour*24*EXPIRATION {
-			if mode == datatype.URF {
+		if t := time.Now().Sub(data.CreationTime); t >= time.Hour*24*Expiration {
+			if mode == datatype.Urf {
 				node.Value.URF = CachedData{}
 				data = &node.Value.URF
-			} else if mode == datatype.ARAM {
+			} else if mode == datatype.Aram {
 				node.Value.ARAM = CachedData{}
 				data = &node.Value.ARAM
-			} else if mode == datatype.DEFAULT {
+			} else if mode == datatype.Default {
 				node.Value.Default[position] = CachedData{}
 				data = &node.Value.Default[position]
 			}
@@ -263,7 +247,7 @@ func (c *Cache) UnmarshalBinary(data []byte) (err error) {
 	c.Head = &Node{}
 	c.Tail = &Node{}
 
-	c.Existing = make(map[string]*Node, CAPACITY)
+	c.Existing = make(map[int]*Node, Capacity)
 
 	curr := c.Head
 	prev := curr
@@ -288,7 +272,7 @@ func (c *Cache) UnmarshalBinary(data []byte) (err error) {
 func (c *Cache) String() (str string) {
 	curr := c.Head.Next
 	for i := 0; i < c.Size; i++ {
-		str += curr.Value.Key + "\t"
+		str += strconv.Itoa(curr.Value.Key) + "\t"
 		curr = curr.Next
 	}
 

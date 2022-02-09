@@ -1,11 +1,13 @@
 package datatype
 
+import "time"
+
 type GameMode int
 
 const (
-	DEFAULT GameMode = 0
-	ARAM    GameMode = 450
-	URF     GameMode = 900
+	Default GameMode = 0
+	Aram    GameMode = 450
+	Urf     GameMode = 900
 )
 
 type Spells struct {
@@ -17,9 +19,9 @@ type Spells struct {
 
 type DFFRunePage struct {
 	Name      string
-	PickRate  string
-	WinRate   string
-	SampleCnt string
+	PickRate  float64
+	WinRate   float64
+	SampleCnt int
 	Page      RunePage
 }
 
@@ -318,4 +320,322 @@ type ChampSelect struct {
 		TotalTimeInPhase        int    `json:"totalTimeInPhase"`
 	} `json:"timer"`
 	Trades []interface{} `json:"trades"`
+}
+
+type OPGGChampList struct {
+	ID           int  `json:"id"`
+	IsRotation   bool `json:"is_rotation"`
+	IsRip        bool `json:"is_rip"`
+	AverageStats struct {
+		WinRate  float64     `json:"win_rate"`
+		PickRate float64     `json:"pick_rate"`
+		BanRate  float64     `json:"ban_rate"`
+		Kda      interface{} `json:"kda"`
+		Tier     int         `json:"tier"`
+		Rank     int         `json:"rank"`
+	} `json:"average_stats"`
+	Positions []struct {
+		Name  string `json:"name"`
+		Stats struct {
+			WinRate  float64 `json:"win_rate"`
+			PickRate float64 `json:"pick_rate"`
+			BanRate  float64 `json:"ban_rate"`
+			RoleRate float64 `json:"role_rate"`
+			TierData struct {
+				Tier     int `json:"tier"`
+				Rank     int `json:"rank"`
+				RankDiff int `json:"rank_diff"`
+			} `json:"tier_data"`
+		} `json:"stats"`
+	} `json:"positions"`
+	ImageURL         string  `json:"image_url"`
+	Name             string  `json:"name"`
+	Display          bool    `json:"display"`
+	Key              string  `json:"key"`
+	PositionWinRate  float64 `json:"positionWinRate,omitempty"`
+	PositionPickRate float64 `json:"positionPickRate,omitempty"`
+	PositionBanRate  float64 `json:"positionBanRate,omitempty"`
+	PositionRoleRate float64 `json:"positionRoleRate,omitempty"`
+	PositionTierData struct {
+		Tier     int `json:"tier"`
+		Rank     int `json:"rank"`
+		RankDiff int `json:"rank_diff"`
+	} `json:"positionTierData,omitempty"`
+	PositionTier int `json:"positionTier,omitempty"`
+	PositionRank int `json:"positionRank,omitempty"`
+}
+
+type OPGGChampData struct {
+	Summary struct {
+		Version struct {
+			Version    string `json:"version"`
+			PatchIndex int    `json:"patch_index"`
+		} `json:"version"`
+		Meta struct {
+			ID        int      `json:"id"`
+			Key       string   `json:"key"`
+			Name      string   `json:"name"`
+			ImageURL  string   `json:"image_url"`
+			EnemyTips []string `json:"enemy_tips"`
+			AllyTips  []string `json:"ally_tips"`
+			Skins     []struct {
+				Name         string `json:"name"`
+				HasChromas   bool   `json:"has_chromas"`
+				SplashImage  string `json:"splash_image"`
+				LoadingImage string `json:"loading_image"`
+				TilesImage   string `json:"tiles_image"`
+			} `json:"skins"`
+			Passive struct {
+				Name        string `json:"name"`
+				Description string `json:"description"`
+				ImageURL    string `json:"image_url"`
+				VideoURL    string `json:"video_url"`
+			} `json:"passive"`
+			Spells []struct {
+				Key          string `json:"key"`
+				Name         string `json:"name"`
+				Description  string `json:"description"`
+				MaxRank      int    `json:"max_rank"`
+				RangeBurn    []int  `json:"range_burn"`
+				CooldownBurn []int  `json:"cooldown_burn"`
+				CostBurn     []int  `json:"cost_burn"`
+				Tooltip      string `json:"tooltip"`
+				ImageURL     string `json:"image_url"`
+				VideoURL     string `json:"video_url"`
+			} `json:"spells"`
+		} `json:"meta"`
+		Summary struct {
+			ID           int  `json:"id"`
+			IsRotation   bool `json:"is_rotation"`
+			IsRip        bool `json:"is_rip"`
+			AverageStats struct {
+				WinRate  float64 `json:"win_rate"`
+				PickRate float64 `json:"pick_rate"`
+				BanRate  float64 `json:"ban_rate"` // null if ARAM/URF
+				Kda      float64 `json:"kda"`      // null if norm
+				Tier     int     `json:"tier"`
+				Rank     int     `json:"rank"`
+			} `json:"average_stats"`
+			Positions []struct { // null if ARAM/URF
+				Name  string `json:"name"`
+				Stats struct {
+					WinRate  float64 `json:"win_rate"`
+					PickRate float64 `json:"pick_rate"`
+					BanRate  float64 `json:"ban_rate"`
+					RoleRate float64 `json:"role_rate"`
+					TierData struct {
+						Tier     int `json:"tier"`
+						Rank     int `json:"rank"`
+						RankDiff int `json:"rank_diff"`
+					} `json:"tier_data"`
+				} `json:"stats"`
+			} `json:"positions"`
+		} `json:"summary"`
+		Opponents [][]struct { // does not exist if ARAM/URF and some normal
+			ChampionID int `json:"champion_id"`
+			Play       int `json:"play"`
+			Win        int `json:"win"`
+			Meta       struct {
+				ID        int      `json:"id"`
+				Key       string   `json:"key"`
+				Name      string   `json:"name"`
+				ImageURL  string   `json:"image_url"`
+				EnemyTips []string `json:"enemy_tips"`
+				AllyTips  []string `json:"ally_tips"`
+				Skins     []struct {
+					Name         string `json:"name"`
+					HasChromas   bool   `json:"has_chromas"`
+					SplashImage  string `json:"splash_image"`
+					LoadingImage string `json:"loading_image"`
+					TilesImage   string `json:"tiles_image"`
+				} `json:"skins"`
+				Passive struct {
+					Name        string `json:"name"`
+					Description string `json:"description"`
+					ImageURL    string `json:"image_url"`
+					VideoURL    string `json:"video_url"`
+				} `json:"passive"`
+				Spells []struct {
+					Key          string `json:"key"`
+					Name         string `json:"name"`
+					Description  string `json:"description"`
+					MaxRank      int    `json:"max_rank"`
+					RangeBurn    []int  `json:"range_burn"`
+					CooldownBurn []int  `json:"cooldown_burn"`
+					CostBurn     []int  `json:"cost_burn"`
+					Tooltip      string `json:"tooltip"`
+					ImageURL     string `json:"image_url"`
+					VideoURL     string `json:"video_url"`
+				} `json:"spells"`
+			} `json:"meta"`
+			WinRate float64 `json:"win_rate"`
+		} `json:"opponents"`
+	} `json:"summary"`
+	//Meta struct {
+	//	Runes []struct {
+	//		ID           int    `json:"id"`
+	//		PageID       int    `json:"page_id"`
+	//		SlotSequence int    `json:"slot_sequence"`
+	//		RuneSequence int    `json:"rune_sequence"`
+	//		Key          string `json:"key"`
+	//		Name         string `json:"name"`
+	//		ShortDesc    string `json:"short_desc"`
+	//		LongDesc     string `json:"long_desc"`
+	//		ImageURL     string `json:"image_url"`
+	//	} `json:"runes"`
+	//	RunePages []struct {
+	//		ID          int    `json:"id"`
+	//		Name        string `json:"name"`
+	//		Description string `json:"description"`
+	//		Slogan      string `json:"slogan"`
+	//		ImageURL    string `json:"image_url"`
+	//	} `json:"runePages"`
+	//	StatMods []struct {
+	//		ID        int    `json:"id"`
+	//		Name      string `json:"name"`
+	//		ShortDesc string `json:"short_desc"`
+	//		ImageURL  string `json:"image_url"`
+	//	} `json:"statMods"`
+	//	Items []struct {
+	//		ID        int         `json:"id"`
+	//		Name      string      `json:"name"`
+	//		ImageURL  string      `json:"image_url"`
+	//		IsMythic  bool        `json:"is_mythic"`
+	//		IntoItems []int       `json:"into_items"`
+	//		FromItems interface{} `json:"from_items"`
+	//		Gold      struct {
+	//			Sell        int  `json:"sell"`
+	//			Total       int  `json:"total"`
+	//			Base        int  `json:"base"`
+	//			Purchasable bool `json:"purchasable"`
+	//		} `json:"gold"`
+	//		Plaintext   string `json:"plaintext"`
+	//		Description string `json:"description"`
+	//	} `json:"items"`
+	//	Spells []struct {
+	//		ID          int    `json:"id"`
+	//		Key         string `json:"key"`
+	//		Name        string `json:"name"`
+	//		Description string `json:"description"`
+	//		ImageURL    string `json:"image_url"`
+	//	} `json:"spells"`
+	//} `json:"meta"`
+	SummonerSpells []struct {
+		Ids      []int   `json:"ids"`
+		Win      int     `json:"win"`
+		Play     int     `json:"play"`
+		PickRate float64 `json:"pick_rate"`
+	} `json:"summoner_spells"`
+	Trends struct { // does not exist if ARAM/URF and some normal
+		TotalRank         int `json:"total_rank"`
+		TotalPositionRank int `json:"total_position_rank"`
+		Win               []struct {
+			Version   string    `json:"version"`
+			Rate      float64   `json:"rate"`
+			Average   float64   `json:"average"`
+			Rank      int       `json:"rank"`
+			CreatedAt time.Time `json:"created_at"`
+		} `json:"win"`
+		Ban []struct {
+			Version   string    `json:"version"`
+			Rate      float64   `json:"rate"`
+			Average   float64   `json:"average"`
+			Rank      int       `json:"rank"`
+			CreatedAt time.Time `json:"created_at"`
+		} `json:"ban"`
+		Pick []struct {
+			Version   string    `json:"version"`
+			Rate      float64   `json:"rate"`
+			Average   float64   `json:"average"`
+			Rank      int       `json:"rank"`
+			CreatedAt time.Time `json:"created_at"`
+		} `json:"pick"`
+	} `json:"trends"`
+	GameLengths []struct {
+		GameLength int     `json:"game_length"`
+		Rate       float64 `json:"rate"`
+		Average    float64 `json:"average"`
+		Rank       int     `json:"rank"`
+	} `json:"game_lengths"`
+	Skills []struct {
+		Order    []string `json:"order"`
+		Play     int      `json:"play"`
+		Win      int      `json:"win"`
+		PickRate float64  `json:"pick_rate"`
+	} `json:"skills"`
+	SkillMasteries []struct {
+		Ids      []string `json:"ids"`
+		Play     int      `json:"play"`
+		Win      int      `json:"win"`
+		PickRate float64  `json:"pick_rate"`
+		Builds   []struct {
+			Order    []string `json:"order"`
+			Play     int      `json:"play"`
+			Win      int      `json:"win"`
+			PickRate float64  `json:"pick_rate"`
+		} `json:"builds"`
+	} `json:"skill_masteries"`
+	Runes []struct {
+		ID               int     `json:"id"`
+		PrimaryPageID    int     `json:"primary_page_id"`
+		PrimaryRuneIds   []int   `json:"primary_rune_ids"`
+		SecondaryPageID  int     `json:"secondary_page_id"`
+		SecondaryRuneIds []int   `json:"secondary_rune_ids"`
+		StatModIds       []int   `json:"stat_mod_ids"`
+		Play             int     `json:"play"`
+		Win              int     `json:"win"`
+		PickRate         float64 `json:"pick_rate"`
+	} `json:"runes"`
+	RunePages []struct {
+		ID              int     `json:"id"`
+		PrimaryPageID   int     `json:"primary_page_id"`
+		SecondaryPageID int     `json:"secondary_page_id"`
+		Play            int     `json:"play"`
+		PickRate        float64 `json:"pick_rate"`
+		Win             int     `json:"win"`
+		Builds          []struct {
+			ID               int     `json:"id"`
+			PrimaryPageID    int     `json:"primary_page_id"`
+			PrimaryRuneIds   []int   `json:"primary_rune_ids"`
+			SecondaryPageID  int     `json:"secondary_page_id"`
+			SecondaryRuneIds []int   `json:"secondary_rune_ids"`
+			StatModIds       []int   `json:"stat_mod_ids"`
+			Play             int     `json:"play"`
+			Win              int     `json:"win"`
+			PickRate         float64 `json:"pick_rate"`
+		} `json:"builds"`
+	} `json:"rune_pages"`
+	CoreItems []struct {
+		Ids      []int   `json:"ids"`
+		Win      int     `json:"win"`
+		Play     int     `json:"play"`
+		PickRate float64 `json:"pick_rate"`
+	} `json:"core_items"`
+	Boots []struct {
+		Ids      []int   `json:"ids"`
+		Win      int     `json:"win"`
+		Play     int     `json:"play"`
+		PickRate float64 `json:"pick_rate"`
+	} `json:"boots"`
+	StarterItems []struct {
+		Ids      []int   `json:"ids"`
+		Win      int     `json:"win"`
+		Play     int     `json:"play"`
+		PickRate float64 `json:"pick_rate"`
+	} `json:"starter_items"`
+	LastItems []struct {
+		Ids      []int   `json:"ids"`
+		Win      int     `json:"win"`
+		Play     int     `json:"play"`
+		PickRate float64 `json:"pick_rate"`
+	} `json:"last_items"`
+}
+
+type OPGGResponse struct {
+	Props struct {
+		PageProps struct {
+			ChampionMetaList []OPGGChampList `json:"championMetaList"`
+			Data             OPGGChampData   `json:"data"`
+		} `json:"pageProps"`
+	} `json:"props"`
 }
