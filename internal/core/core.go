@@ -21,7 +21,7 @@ import (
 )
 
 const ProjectName string = "DFF!"
-const Version string = "v0.6.2"
+const Version string = "v0.6.2 (beta1)"
 const IssueUrl string = "https://github.com/jaeha-choi/DFF/issues"
 
 type DFFClient struct {
@@ -1010,18 +1010,17 @@ func (client *DFFClient) Run(window fyne.Window, status *widget.Label, p *widget
 				}
 				runeSelect.Selected = runeSelect.Options[0]
 				runeSelect.OnChanged = func(s string) {
-					for _, elem := range cachedData.RunePages {
-						name := strings.Fields(s)
-						if name[0]+" "+name[1] == elem.Name {
-							ok, err := client.setRunePage(&elem.Page)
-							if !ok || err != nil {
-								status.SetText("Error. Check log")
-								if client.window != nil {
-									client.window.RequestFocus()
-								}
-							}
+					client.Log.Debug("Alternative rune selected")
+					endI := strings.Index(s, ". ")
+					i, _ := strconv.Atoi(s[:endI])
+					ok, err := client.setRunePage(&cachedData.RunePages[i-1].Page)
+					if !ok || err != nil {
+						status.SetText("Error. Check log")
+						if client.window != nil {
+							client.window.RequestFocus()
 						}
 					}
+
 				}
 				runeSelect.Refresh()
 			}
