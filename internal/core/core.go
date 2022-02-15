@@ -794,6 +794,10 @@ func (client *DFFClient) retrieveData(gameMode datatype.GameMode, champion *data
 	// Normal mode, no specified position
 	if gameMode == datatype.Default && position == cache.None {
 		champMeta := client.metaInfo.Existing[champion.ID]
+		if champMeta == nil {
+			client.Log.Error("champMeta returns nil")
+			return nil, 0, false
+		}
 		// "RIP" champions use Top as a default position
 		if champMeta.IsRip || len(champMeta.Positions) == 0 {
 			client.Log.Info(champion.Alias, " does not have enough sample count.")
