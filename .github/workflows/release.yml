@@ -7,30 +7,96 @@ jobs:
   release-macos:
     name: macOS Binary Release
     runs-on: macos-latest
-    strategy:
-      matrix:
-        mac_arch: [ amd64, arm64 ]
     env:
       CGO_ENABLED: 1
+      GOOS: darwin
     steps:
       - uses: actions/checkout@v2
-      - uses: wangyoucao577/go-release-action@v1.24
+
+      #      - name: Install dependencies
+      #        run: |
+      #          go get fyne.io/fyne/v2@v2.1.2
+      #          go get github.com/anaskhan96/soup@v1.2.5
+
+      - name: Set up Go
+        uses: actions/setup-go@v2
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          goos: darwin
-          goarch: matrix.mac_arch
-          #           ldflags: -H=windowsgui
-          extra_files: License
+          go-version: 1.17
+
+      - name: Pre-build commands
+        run: |
+          mkdir -p ./build/dff-macos-amd64
+          mkdir -p ./build/dff-macos-arm64
+          cp ./License ./build/dff-macos-amd64/license
+          cp ./License ./build/dff-macos-arm64/license
+
+      - name: Build for amd64
+        env:
+          GOARCH: amd64
+        run: go build -o ./build/dff-macos-amd64/dff-macos-amd64 ./cmd/dff.go
+
+      - name: Build for arm64
+        env:
+          GOARCH: arm64
+        run: go build -o ./build/dff-macos-arm64/dff-macos-arm64 ./cmd/dff.go
+
+      - name: Create zip
+        run: |
+          7z a dff-macos-amd64.zip ./build/dff-macos-amd64
+          7z a dff-macos-arm64.zip ./build/dff-macos-arm64
+
+      - name: Post-build commands
+        run: |
+          md5 dff-macos-amd64.zip > dff-macos-amd64.zip.md5
+          md5 dff-macos-arm64.zip > dff-macos-arm64.zip.md5
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: true
+          files: |
+            dff-macos-amd64.zip
+            dff-macos-amd64.zip.md5
+            dff-macos-arm64.zip
+            dff-macos-arm64.zip.md5
 
   release-win:
-    name: Windows Binary
+    name: Windows Binary Release
     runs-on: windows-latest
+    env:
+      GOOS: windows
+      GOARCH: amd64
     steps:
       - uses: actions/checkout@v2
-      - uses: wangyoucao577/go-release-action@v1.24
+
+      #      - name: Install dependencies
+      #        run: |
+      #          go get fyne.io/fyne/v2@v2.1.2
+      #          go get github.com/anaskhan96/soup@v1.2.5
+
+      - name: Set up Go
+        uses: actions/setup-go@v2
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          goos: windows
-          goarch: amd64
-          ldflags: -H=windowsgui
-          extra_files: License
+          go-version: 1.17
+
+      - name: Pre-build commands
+        run: |
+          mkdir .\build\dff-windows-amd64
+          cp .\License .\build\dff-windows-amd64\License
+
+      - name: Build
+        run: go build -o .\build\dff-windows-amd64\dff-windows-amd64.exe -ldflags -H=windowsgui .\cmd\dff.go
+
+      - name: Create zip
+        run: 7z a dff-windows-amd64.zip .\build\dff-windows-amd64
+
+      - name: Post-build commands
+        run: certutil -hashfile dff-windows-amd64.zip | findstr /V ":" > dff-windows-amd64.zip.md5
+
+      - name: Release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: true
+          files: |
+            dff-windows-amd64.zip
+            dff-windows-amd64.zip.md5
