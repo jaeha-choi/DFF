@@ -3,4 +3,4 @@
 
 package core
 
-const DefaultInstallPath = "/Applications/League of Legends.app/Contents"
+const DefaultInstallPath = "/Applications/League of Legends.app/Contents/LoL"
