@@ -14,6 +14,7 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -21,7 +22,7 @@ import (
 )
 
 const ProjectName string = "DFF!"
-const Version string = "v0.6.2"
+const Version string = "v0.6.3 (beta 1)"
 const IssueUrl string = "https://github.com/jaeha-choi/DFF/issues"
 
 type DFFClient struct {
@@ -116,7 +117,7 @@ func createDFFClient(outTo io.Writer) *DFFClient {
 		window:      nil,
 		Debug:       false,
 		Interval:    2,
-		ClientDir:   "C:/Riot Games/League of Legends/",
+		ClientDir:   DefaultInstallPath,
 		EnableRune:  true,
 		EnableItem:  true,
 		EnableSpell: true,
@@ -289,7 +290,7 @@ func (client *DFFClient) readLockFile() (err error) {
 	var file *os.File
 	// Loop until file is available
 	for {
-		if file, err = os.Open(client.ClientDir + "lockfile"); err == nil {
+		if file, err = os.Open(path.Join(client.ClientDir, "lockfile")); err == nil {
 			client.Log.Debug("lockfile found")
 			break
 		} else {
