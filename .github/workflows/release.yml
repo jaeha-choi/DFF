@@ -1,0 +1,36 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+jobs:
+  release-macos:
+    name: macOS Binary Release
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        mac_arch: [ amd64, arm64 ]
+    env:
+      CGO_ENABLED: 1
+    steps:
+      - uses: actions/checkout@v2
+      - uses: wangyoucao577/go-release-action@v1.24
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          goos: darwin
+          goarch: matrix.mac_arch
+          #           ldflags: -H=windowsgui
+          extra_files: License
+
+  release-win:
+    name: Windows Binary
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v2
+      - uses: wangyoucao577/go-release-action@v1.24
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          goos: windows
+          goarch: amd64
+          ldflags: -H=windowsgui
+          extra_files: License
