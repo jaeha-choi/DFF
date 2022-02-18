@@ -17,6 +17,8 @@ jobs:
       #        run: |
       #          go get fyne.io/fyne/v2@v2.1.2
       #          go get github.com/anaskhan96/soup@v1.2.5
+      - name: Install depdendencies
+        run: go mod tidy
 
       - name: Set up Go
         uses: actions/setup-go@v2
@@ -73,6 +75,8 @@ jobs:
       #        run: |
       #          go get fyne.io/fyne/v2@v2.1.2
       #          go get github.com/anaskhan96/soup@v1.2.5
+      - name: Install depdendencies
+        run: go mod tidy
 
       - name: Set up Go
         uses: actions/setup-go@v2
