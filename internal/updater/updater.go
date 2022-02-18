@@ -88,51 +88,66 @@ type GitHubUpdate struct {
 }
 
 func Update(log *log.Logger, w fyne.Window) {
+	errorPopup := func() {
+		widget.ShowPopUpAtPosition(widget.NewLabel("Could not update DFF. Check log for info."),
+			w.Canvas(), fyne.NewPos(50, 50))
+		time.Sleep(3 * time.Second)
+	}
 	req, err := http.Get("https://api.github.com/repos/jaeha-choi/DFF/releases/latest")
 	if err != nil || req.StatusCode != http.StatusOK {
 		log.Debug(err)
 		log.Errorf("Error while getting latest version info. Status code: %d", req.StatusCode)
-		widget.ShowPopUpAtPosition(widget.NewLabel("Could not connect to github repository."),
-			w.Canvas(), fyne.NewPos(50, 50))
+		errorPopup()
 	} else {
 		var update GitHubUpdate
 		if err = json.NewDecoder(req.Body).Decode(&update); err != nil {
 			log.Debug(err)
 			log.Error("Error while decoding version")
+			errorPopup()
 			return
 		}
 
 		if update.TagName != core.Version {
 			downloadUrl := ""
 			for _, asset := range update.Assets {
-				if asset.Name == "DFF_windows.zip" {
+				if asset.Name == AssetName {
+					log.Debug(asset.Name, AssetName)
 					downloadUrl = asset.BrowserDownloadURL
+					break
 				}
 			}
 
 			if downloadUrl == "" {
-				popup := widget.NewLabel("Update Error. File not found.")
-				widget.ShowPopUpAtPosition(popup,
-					w.Canvas(), fyne.NewPos(50, 50))
-				time.Sleep(3 * time.Second)
+				log.Error("file not found on github")
+				errorPopup()
+				return
 			}
 
 			name := strings.Split(downloadUrl, "/")
 			out, err := os.Create(name[len(name)-1])
 			if err != nil {
-				panic(err)
+				log.Debug(err)
+				log.Error("Error while creating file: ", name[len(name)-1])
+				errorPopup()
+				return
 			}
 			defer out.Close()
 
 			resp, err := http.Get(downloadUrl)
 			if err != nil {
-				panic(err)
+				log.Debug(err)
+				log.Error("Error while connecting: ", downloadUrl)
+				errorPopup()
+				return
 			}
 			defer resp.Body.Close()
 
 			_, err = io.Copy(out, resp.Body)
 			if err != nil {
-				panic(err)
+				log.Debug(err)
+				log.Error("Error while downloading file")
+				errorPopup()
+				return
 			}
 
 			log.Info(name[len(name)-1] + " downloaded.")
