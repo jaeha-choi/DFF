@@ -31,12 +31,12 @@ jobs:
       - name: Build for amd64
         env:
           GOARCH: amd64
-        run: go build -o ./build/dff-macos-amd64/dff-macos-amd64 ./cmd/dff.go
+        run: go build -o ./build/dff-macos-amd64/dff-macos-amd64 -ldflags -H=windowsgui ./cmd/dff.go
 
       - name: Build for arm64
         env:
           GOARCH: arm64
-        run: go build -o ./build/dff-macos-arm64/dff-macos-arm64 ./cmd/dff.go
+        run: go build -o ./build/dff-macos-arm64/dff-macos-arm64 -ldflags -H=windowsgui ./cmd/dff.go
 
       - name: Create zip
         run: |
